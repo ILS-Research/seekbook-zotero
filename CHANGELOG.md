@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.6 – 2026-09-29
+- **REST: protection against DNS rebinding** (review H6). The `/seekbook/*` endpoints answer 403 unless the `Host`
+  header is `127.0.0.1`, `localhost` or `[::1]`. A web page whose domain resolves to 127.0.0.1 could otherwise read
+  book text with same-origin GETs, which carry no `Origin` header. Zotero checks this itself only since 2026; SeekBook
+  supports Zotero 7.0+, so it checks as well.
+
 ## 0.3.5 – 2026-09-29
 Fixes from the code review, M1, M3–M5, M7–M10:
 - **Embedding requests time out** (120 s per attempt, retried) and are **aborted by Pause, Stop and shutdown**, so a

@@ -1,7 +1,11 @@
 /**
  * REST interface on Zotero's local server (127.0.0.1:<Zotero.Server.port>):
- * GET /seekbook/stats, /seekbook/search, /seekbook/pages, /seekbook/books. Same security rules
- * as ZotSeek: local Origin only; callers send `Zotero-Allowed-Request: 1`.
+ * GET /seekbook/stats, /seekbook/search, /seekbook/pages, /seekbook/books.
+ *
+ * Security: callers send `Zotero-Allowed-Request: 1` (Zotero's server drops browser requests
+ * without it). SeekBook itself accepts only a loopback Host header (DNS rebinding: a web page
+ * whose domain resolves to 127.0.0.1 would otherwise read book text with same-origin GETs, which
+ * carry no Origin; Zotero checks this itself only since 2026) and a missing or loopback Origin.
  * Search results have the shape of ZotSeek's `/zotseek/search` results.
  */
 import type { Indexer } from './indexer';
@@ -32,6 +36,11 @@ function json(status: number, payload: unknown): Response {
 export function isAllowedOrigin(origin: string | null | undefined): boolean {
   if (!origin) return true;
   return /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(origin);
+}
+
+/** Host header of a request to this computer; same rule as Zotero's own server. */
+export function isAllowedHost(host: string | null | undefined): boolean {
+  return !!host && /^(?:127\.0\.0\.1|\[::1\]|localhost)(?::\d+)?$/i.test(host);
 }
 
 function list(value: string | null): string[] | undefined {
@@ -187,7 +196,11 @@ function guard(handler: (sp: URLSearchParams) => Promise<unknown>, path = '') {
       L.info(`GET ${path}?${requestData?.searchParams || ''} → ${r[0]} in ${Date.now() - t0} ms`);
       return r;
     };
-    if (!isAllowedOrigin(requestData?.headers?.['origin'] ?? requestData?.headers?.['Origin'])) {
+    const headers = requestData?.headers || {};
+    if (!isAllowedHost(headers['host'] ?? headers['Host'])) {
+      return done(json(403, { error: 'Forbidden: Host must be 127.0.0.1, localhost or [::1]' }));
+    }
+    if (!isAllowedOrigin(headers['origin'] ?? headers['Origin'])) {
       return done(json(403, { error: 'Forbidden: non-local Origin' }));
     }
     try {

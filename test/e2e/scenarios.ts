@@ -338,6 +338,19 @@ export const scenarios: Scenario[] = [
     ctx.rebuilt = true;
   }],
 
+  ['REST refuses a foreign Host header (DNS rebinding, H6)', async () => {
+    // Zotero 10 rejects such requests itself, so the endpoint is called directly, as older Zotero versions would.
+    const call = async (headers: Record<string, string>) => {
+      const Endpoint = Zotero.Server.Endpoints[PATHS.pages];
+      return new Endpoint().init({ method: 'GET', headers, searchParams: new URLSearchParams('attachmentKey=X&pages=1') });
+    };
+    const rebound = await call({ host: 'evil.example:23119' });
+    assert(rebound[0] === 403 && /Host/.test(rebound[2]), JSON.stringify(rebound));
+    assert((await call({})) [0] === 403, 'missing Host accepted');
+    const local = await call({ host: `127.0.0.1:${Zotero.Server.port}` });
+    assert(local[0] === 404, `loopback Host: ${JSON.stringify(local)}`);
+  }],
+
   ['REST access can be switched off', async () => {
     setPref('apiEnabled', false);
     plugin().applyApiPref();

@@ -7,7 +7,7 @@
 - **Nicht gelesen:** `test/**`, `e2e/**`
 - **Tests:** nicht ausgeführt. Das Node auf dem Host ist zu alt; der Build läuft in Docker über `build.sh`.
 
-> **Status:** H1–H5 behoben in v0.3.4; M1, M3, M4, M5, M7–M10 in v0.3.5. Offen: H6, M2, M6 und die Niedrig-Punkte.
+> **Status:** H1–H5 behoben in v0.3.4; M1, M3, M4, M5, M7–M10 in v0.3.5. H6 in v0.3.6. Offen: M2, M6 und die Niedrig-Punkte.
 
 ## Gesamteindruck
 
@@ -67,7 +67,7 @@ Ablauf:
 
 **Folge:** Beim Update oder Deaktivieren startet die neue Version, während die alte noch einbettet und auf `seekbook.sqlite` schreibt: zwei DB-Verbindungen, zwei Indexer. H7 macht das schlimmer, weil `stop()` ohne Timeout beliebig lange hängen kann.
 
-### H6 REST: DNS-Rebinding und Prüfung des Origin-Headers
+### ~~H6 REST: DNS-Rebinding und Prüfung des Origin-Headers~~ — ✅ behoben in 0.3.6
 [rest.ts:32](src/core/rest.ts#L32)
 
 - Fehlt der `Origin`-Header, wird die Anfrage zugelassen. Browser schicken bei same-origin-GETs keinen `Origin` mit.
@@ -75,6 +75,9 @@ Ablauf:
 - Laut Kommentar im Dateikopf wird `Zotero-Allowed-Request` verlangt. Im Code wird dieser Header nirgends geprüft.
 
 **Vorschlag:** den `Host`-Header gegen `127.0.0.1`, `localhost` und `[::1]` (mit Port) prüfen. Außerdem nachsehen, was `Zotero.Server` selbst schon abfängt.
+
+
+**Umsetzung (0.3.6):** Zotero prüft den `Host`-Header selbst seit Commit `5dc817db4` (April 2026), ältere Zotero-7-Versionen nicht. SeekBook lehnt deshalb zusätzlich jeden `Host` außer `127.0.0.1`, `localhost` und `[::1]` mit 403 ab (`isAllowedHost` in rest.ts). Browser-Anfragen ohne `Zotero-Allowed-Request` verwirft Zotero schon vorher anhand von User-Agent bzw. Origin.
 
 ---
 
@@ -165,7 +168,7 @@ Das korrigiert sich erst beim nächsten Sync. Mit `autoIndex=false` passiert das
 ## Empfohlene Reihenfolge
 
 1. ~~**H1, H2, H3 und H5.** Sie kosten Daten oder machen den Index inkonsistent. Ein gemeinsamer Fix ist möglich: ein Konfigurationswechsel pausiert nur noch, gelöscht wird nur über `rebuild()`, und `bootstrap.js` wartet `shutdown()` ab.~~ ✅ 0.3.4
-2. **H6.** Sicherheit.
+2. ~~**H6.** Sicherheit.~~ ✅ 0.3.6
 3. ~~**M1** und **M3**~~ ✅ 0.3.5 · **M2** offen. Hänger und Abstürze.
 4. ~~**H4.** Kleiner Fix mit großer Wirkung für Nutzer mit synchronisierten Bibliotheken.~~ ✅ 0.3.4
 5. Die übrigen Punkte nach Gelegenheit.

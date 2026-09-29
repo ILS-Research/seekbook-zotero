@@ -62,7 +62,8 @@ The host has no usable Node. **Everything runs in Docker** via the scripts (`doc
   semantic/hybrid when `documents.model_id` differs from the current model.
 - Embedding requests take the run's `AbortSignal` (`Indexer.abort`); `pause()`/`stop()` abort them. A stopped doc goes
   back to `queued`. `store.writeDocument` only marks `ready` if `content_hash` still matches (file changed meanwhile).
-- Requests to Zotero's local server need `Zotero-Allowed-Request: 1`.
+- Requests to Zotero's local server need `Zotero-Allowed-Request: 1`; `/seekbook/*` also requires a loopback `Host`
+  header (`isAllowedHost`, DNS rebinding), so callers must use 127.0.0.1/localhost, not a host name.
 - Page numbers are physical and 1-based **per PDF**; every search hit carries its `attachmentKey`.
 - Index config (provider, model, window sizes, doc prefix) lives in `meta.index_config`; a change pauses indexing
   until "Rebuild index" (`needsRebuild` in `/seekbook/stats`).
@@ -82,4 +83,4 @@ The host has no usable Node. **Everything runs in Docker** via the scripts (`doc
 
 ## Code-Review
 
-- `REVIEW_OPUS_5.5_NODOCS.md` (29.09.2026): Review of v0.3.3 based on the source code only (no docs). Findings H1–H6, M1–M10 and low-priority items (H1–H5 fixed in 0.3.4, M1/M3–M5/M7–M10 in 0.3.5); check it before larger changes to the indexer, store, scan pool or REST.
+- `REVIEW_OPUS_5.5_NODOCS.md` (29.09.2026): Review of v0.3.3 based on the source code only (no docs). Findings H1–H6, M1–M10 and low-priority items (H1–H5 fixed in 0.3.4, M1/M3–M5/M7–M10 in 0.3.5, H6 in 0.3.6; open: M2, M6, low-priority items); check it before larger changes to the indexer, store, scan pool or REST.

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { booksPayload, HttpError, isAllowedOrigin, parsePageRange, parseSearchParams } from '../src/core/rest';
+import { booksPayload, HttpError, isAllowedHost, isAllowedOrigin, parsePageRange, parseSearchParams } from '../src/core/rest';
 import { parseSearchResponse } from './fixtures/seekchat-parse';
 
 test('search parameters are validated', () => {
@@ -23,6 +23,12 @@ test('origin guard', () => {
   assert.ok(isAllowedOrigin(undefined));
   assert.ok(isAllowedOrigin('http://127.0.0.1:23119'));
   assert.ok(!isAllowedOrigin('https://evil.example'));
+});
+
+test('only a loopback Host header is accepted (DNS rebinding)', () => {
+  for (const ok of ['127.0.0.1:23119', 'localhost:23119', 'LOCALHOST', '[::1]:23119', '127.0.0.1']) assert.ok(isAllowedHost(ok), ok);
+  for (const bad of [undefined, null, '', 'evil.example:23119', '127.0.0.1.evil.example', 'localhost.evil.example:23119',
+    '127.0.0.2:23119', '::1', 'localhost:23119/x']) assert.ok(!isAllowedHost(bad), String(bad));
 });
 
 test("SeekChat's parser reads a SeekBook result unchanged", () => {
