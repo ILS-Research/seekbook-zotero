@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3 – 2026-09-29
+- Settings reorganized like ZotSeek: collapsible groups, "Status" first with cards (books, windows, storage), model /
+  average / last indexed line, action boxes "Index now" (recommended) and "Rebuild index".
+- Item tree column "SeekBook" (like ZotSeek's): ✓ searchable · ◐ partly · ⟳ being indexed · … queued · ✗ failed ·
+  ⊘ excluded; shown once on first install.
+
 ## 0.1.2 – 2026-09-29
 - Context menu for books: "Add to book index" (also with automatic indexing off), "Reindex" (all PDFs of the book,
   also failed ones) and "Book index status …" (state of each PDF, windows, chapter source, live progress, queue position).

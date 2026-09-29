@@ -9,10 +9,73 @@
   #seekbook-preferences .danger b { color: #c62828; }
   #seekbook-preferences .buttons { display: flex; gap: 8px; margin: 8px 0; }
   #seekbook-preferences ul { margin: 4px 0; padding-left: 18px; max-width: 660px; font-size: 12px; }
+  #seekbook-preferences { --sb-blue: #1976d2; --sb-green: #2e7d32; --sb-orange: #e65100; }
+  #seekbook-preferences .cards { display: flex; gap: 12px; margin: 8px 0; max-width: 660px; }
+  #seekbook-preferences .card { flex: 1; border-radius: 8px; padding: 12px; text-align: center; }
+  #seekbook-preferences .card .value { font-size: 24px; font-weight: 600; }
+  #seekbook-preferences .card .label { font-size: 11px; margin-top: 2px; }
+  #seekbook-preferences .card-books { background: #e3f2fd; } #seekbook-preferences .card-books * { color: var(--sb-blue); }
+  #seekbook-preferences .card-chunks { background: #e8f5e9; } #seekbook-preferences .card-chunks * { color: var(--sb-green); }
+  #seekbook-preferences .card-storage { background: #fff3e0; } #seekbook-preferences .card-storage * { color: var(--sb-orange); }
+  #seekbook-preferences .meta { font-size: 11px; color: var(--fill-secondary); max-width: 660px; }
+  #seekbook-preferences .meta span { margin-right: 16px; }
+  #seekbook-preferences .action { border: 1px solid; border-radius: 6px; padding: 12px; margin-bottom: 8px; max-width: 636px; }
+  #seekbook-preferences .action p { font-size: 11px; color: var(--fill-secondary); margin: 6px 0 0 0; }
+  #seekbook-preferences .action-primary { background: #e8f5e9; border-color: #a5d6a7; }
+  #seekbook-preferences .action-secondary { background: #f5f5f5; border-color: #e0e0e0; }
+  #seekbook-preferences .action button + button { margin-left: 8px; }
+  #seekbook-preferences .recommended { margin-left: 8px; color: var(--sb-green); font-size: 11px; font-weight: 500; }
+  #seekbook-preferences details.group { margin: 2px 0 10px 0; }
+  #seekbook-preferences details.group > summary { cursor: pointer; font-size: 16px; font-weight: 700; padding: 6px 0;
+    border-bottom: 1px solid var(--fill-quinary); margin-bottom: 8px; user-select: none; }
+  @media (prefers-color-scheme: dark) {
+    #seekbook-preferences { --sb-blue: #64b5f6; --sb-green: #81c784; --sb-orange: #ffb74d; }
+    #seekbook-preferences .card-books { background: rgba(25, 118, 210, 0.15); }
+    #seekbook-preferences .card-chunks { background: rgba(46, 125, 50, 0.15); }
+    #seekbook-preferences .card-storage { background: rgba(230, 81, 0, 0.15); }
+    #seekbook-preferences .action-primary { background: rgba(46, 125, 50, 0.15); border-color: rgba(46, 125, 50, 0.4); }
+    #seekbook-preferences .action-secondary { background: var(--material-sidepane); border-color: var(--material-border); }
+  }
 </html:style>
 
+<html:details class="group" id="seekbook-group-status" open="">
+<html:summary data-i18n="prefs.status">Status</html:summary>
 <groupbox>
-  <label><html:h2 data-i18n="prefs.server">Embedding server</html:h2></label>
+  <label><html:h2 data-i18n="prefs.statistics">Index statistics</html:h2></label>
+  <html:div class="cards">
+    <html:div class="card card-books"><html:div class="value" id="seekbook-stat-books">-</html:div><html:div class="label" data-i18n="prefs.statBooks">Books indexed</html:div></html:div>
+    <html:div class="card card-chunks"><html:div class="value" id="seekbook-stat-chunks">-</html:div><html:div class="label" data-i18n="prefs.statChunks">Windows</html:div></html:div>
+    <html:div class="card card-storage"><html:div class="value" id="seekbook-stat-storage">-</html:div><html:div class="label" data-i18n="prefs.statStorage">Storage used</html:div></html:div>
+  </html:div>
+  <html:div class="meta">
+    <html:span id="seekbook-stat-model">-</html:span><html:span id="seekbook-stat-avg">-</html:span><html:span id="seekbook-stat-last">-</html:span>
+  </html:div>
+  <html:div id="seekbook-counts" class="meta"></html:div>
+  <html:div id="seekbook-progress" class="help" style="margin-top: 6px;"></html:div>
+  <html:div class="buttons"><html:button id="seekbook-refresh" data-i18n="prefs.refresh">Refresh stats</html:button></html:div>
+</groupbox>
+<groupbox>
+  <label><html:h2 data-i18n="prefs.actions">Actions</html:h2></label>
+  <html:div class="action action-primary">
+    <html:div>
+      <html:button id="seekbook-indexNow" data-i18n="prefs.indexNow" style="font-weight: 600;">Index now</html:button>
+      <html:button id="seekbook-pause" data-i18n="prefs.pause">Pause</html:button>
+      <html:span class="recommended" data-i18n="prefs.recommended">✓ Recommended</html:span>
+    </html:div>
+    <html:p data-i18n="prefs.indexNowDesc">Index new and changed books.</html:p>
+  </html:div>
+  <html:div class="action action-secondary">
+    <html:div><html:button id="seekbook-rebuild" data-i18n="prefs.rebuild">Rebuild index</html:button></html:div>
+    <html:p data-i18n="prefs.rebuildDesc">Delete and rebuild.</html:p>
+  </html:div>
+  <html:div data-i18n="prefs.failedList">Failed PDFs</html:div>
+  <html:ul id="seekbook-failed"></html:ul>
+</groupbox>
+</html:details>
+
+<html:details class="group" id="seekbook-group-server" open="">
+<html:summary data-i18n="prefs.server">Embedding server</html:summary>
+<groupbox>
   <html:div class="row">
     <html:label for="seekbook-provider" data-i18n="prefs.provider">Interface</html:label>
     <html:select id="seekbook-provider">
@@ -46,8 +109,11 @@
   </html:div>
 </groupbox>
 
+</html:details>
+
+<html:details class="group" id="seekbook-group-index" open="">
+<html:summary data-i18n="prefs.indexing">Index</html:summary>
 <groupbox>
-  <label><html:h2 data-i18n="prefs.indexing">Index</html:h2></label>
   <html:div class="row">
     <html:label for="seekbook-libraries" data-i18n="prefs.libraries">Libraries</html:label>
     <html:input id="seekbook-libraries" type="text" placeholder="user, group:123"/>
@@ -68,16 +134,5 @@
   <html:label><html:input id="seekbook-apiEnabled" type="checkbox"/> <html:span data-i18n="prefs.api">REST</html:span></html:label>
 </groupbox>
 
-<groupbox>
-  <label><html:h2 data-i18n="prefs.status">Status</html:h2></label>
-  <html:div id="seekbook-counts"></html:div>
-  <html:div id="seekbook-progress" class="help"></html:div>
-  <html:div class="buttons">
-    <html:button id="seekbook-indexNow" data-i18n="prefs.indexNow">Index now</html:button>
-    <html:button id="seekbook-pause" data-i18n="prefs.pause">Pause</html:button>
-    <html:button id="seekbook-rebuild" data-i18n="prefs.rebuild">Rebuild</html:button>
-  </html:div>
-  <html:div data-i18n="prefs.failedList">Failed PDFs</html:div>
-  <html:ul id="seekbook-failed"></html:ul>
-</groupbox>
+</html:details>
 </vbox>

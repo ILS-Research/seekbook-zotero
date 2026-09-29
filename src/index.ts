@@ -12,6 +12,7 @@ import { onPrefsLoad } from './ui/preferences';
 import { addLegacyMenu, registerMenus, removeLegacyMenu, unregisterMenus } from './ui/context-menu';
 import { formatBookStatus } from './core/book-status';
 import { t } from './i18n';
+import { ItemColumn } from './ui/item-column';
 import { log, logError } from './util/log';
 
 const FTL = 'seekbook-main.ftl';
@@ -24,6 +25,8 @@ class SeekBookPlugin {
   info = { id: '', version: '', rootURI: '' };
   store = new Store();
   indexer = new Indexer(this.store);
+  column = new ItemColumn(this.store, () => this.indexer.progress.bookPk);
+  private offColumn: (() => void) | null = null;
   private observerID: string | null = null;
   private pendingItems = new Set<number>();
   private notifyTimer: Promise<void> | null = null;
@@ -41,6 +44,8 @@ class SeekBookPlugin {
       showStatus: (item) => this.showBookStatus(item),
     });
     for (const win of Zotero.getMainWindows()) this.onMainWindowLoad(win);
+    await this.column.register(info.id);
+    this.offColumn = this.indexer.onChange(() => void this.column.reload());
     this.observerID = Zotero.Notifier.registerObserver({ notify: this.notify }, ['item'], 'seekbook');
     try {
       this.paneID = await Zotero.PreferencePanes.register({
@@ -65,6 +70,9 @@ class SeekBookPlugin {
     this.paneID = null;
     unregisterEndpoints();
     unregisterMenus();
+    this.offColumn?.();
+    this.offColumn = null;
+    await this.column.unregister();
     for (const win of Zotero.getMainWindows()) this.onMainWindowUnload(win);
     await this.indexer.stop();
     vectorCache.invalidate();
@@ -142,6 +150,7 @@ class SeekBookPlugin {
     const book = await this.store.bookByKey(libraryKey, key);
     if (book) {
       await this.indexer.removeBook(book.bookPk);
+      void this.column.reload();
       return;
     }
     const doc = await this.store.documentByKey(libraryKey, key);
@@ -149,6 +158,7 @@ class SeekBookPlugin {
       vectorCache.invalidate(doc.docPk);
       await this.store.deleteDocument(doc.docPk);
     }
+    void this.column.reload();
   }
 
   async flushNotifications(): Promise<void> {
@@ -168,12 +178,23 @@ class SeekBookPlugin {
     if (!books.size) return;
     await this.indexer.checkConfig();
     for (const book of books.values()) await this.indexer.syncBook(book);
+    void this.column.reload();
     if (readPrefs().autoIndex && (await this.store.queued()).length) void this.indexer.run();
   }
 
   onPrefsLoad = (win: Window): void => {
     onPrefsLoad(win, {
       counts: () => this.store.counts(),
+      details: async () => {
+        let bytes: number | null = null;
+        try {
+          bytes = (await Zotero.getMainWindow().IOUtils.stat(Zotero.DataDirectory.getDatabase('seekbook'))).size ?? null;
+        } catch {
+          // file not there yet
+        }
+        const last = (await this.store.query('SELECT MAX(indexed_at) AS t FROM documents'))[0]?.t ?? null;
+        return { bytes, model: (await this.store.getMeta('dims')) ? `${readPrefs().model} · ${await this.store.getMeta('dims')}d` : readPrefs().model, lastIndexed: last };
+      },
       failed: async () => {
         const rows = await this.store.query(
           `SELECT b.title, d.attachment_title, d.error FROM documents d JOIN books b ON b.book_pk = d.book_pk

@@ -1,13 +1,15 @@
 /** Settings pane: fields <-> prefs, connection test, index status and controls. */
 import { embed, isEmbeddingModelName, listModels } from '../core/embed/client';
 import { parseAllowedHosts } from '../core/host-guard';
-import { t, type Key } from '../i18n';
+import { currentLocale, t, type Key } from '../i18n';
 import { getPref, readPrefs, setPref } from '../prefs';
 import { logError } from '../util/log';
 
 /** What the pane needs from the plugin (keeps the UI free of store/indexer internals). */
 export interface PaneBackend {
   counts(): Promise<Record<string, number>>;
+  /** Size of seekbook.sqlite in bytes, model of the index, time of the last indexed PDF (ms). */
+  details(): Promise<{ bytes: number | null; model: string; lastIndexed: number | null }>;
   failed(): Promise<{ title: string; error: string }[]>;
   progress(): { running: boolean; paused: boolean; book: number; books: number; title: string; chunk: number; chunks: number; lastError: string | null };
   needsRebuild(): Promise<boolean>;
@@ -115,9 +117,16 @@ export function onPrefsLoad(win: Window, backend: PaneBackend): void {
   const refresh = async () => {
     try {
       const c = await backend.counts();
+      const d = await backend.details();
+      const locale = currentLocale() === 'de' ? 'de-DE' : 'en-US';
+      setText('stat-books', (c.books || 0).toLocaleString(locale));
+      setText('stat-chunks', (c.chunks || 0).toLocaleString(locale));
+      setText('stat-storage', formatBytes(d.bytes));
+      setText('stat-model', t('prefs.statModel', { model: d.model || '–' }));
+      setText('stat-avg', t('prefs.statAvg', { n: c.books ? Math.round((c.chunks || 0) / c.books).toLocaleString(locale) : '–' }));
+      setText('stat-last', t('prefs.statLast', { when: d.lastIndexed ? new Date(d.lastIndexed).toLocaleString(locale) : '–' }));
       setText('counts', t('prefs.counts', {
-        books: c.books || 0, docs: c.ready || 0, chunks: c.chunks || 0,
-        queued: (c.queued || 0) + (c.indexing || 0), failed: c.failed || 0, dups: c.duplicate || 0,
+        docs: c.ready || 0, queued: (c.queued || 0) + (c.indexing || 0), failed: c.failed || 0, dups: c.duplicate || 0,
       }));
       const p = backend.progress();
       let line = p.running ? t('prefs.running', p as any) : p.lastError ? t('prefs.lastError', { message: p.lastError })
@@ -144,10 +153,20 @@ export function onPrefsLoad(win: Window, backend: PaneBackend): void {
     void Zotero.Promise.delay(300).then(() => { pending = false; return refresh(); });
   });
   win.addEventListener('unload', off);
+  $('refresh')?.addEventListener('click', () => void refresh());
   $('indexNow')?.addEventListener('click', () => { backend.indexNow(); void refresh(); });
   $('pause')?.addEventListener('click', () => { backend.pause(); void refresh(); });
   $('rebuild')?.addEventListener('click', () => {
     if (win.confirm(t('prefs.rebuildConfirm'))) backend.rebuild();
   });
   void refresh();
+}
+
+export function formatBytes(bytes: number | null): string {
+  if (bytes === null || !Number.isFinite(bytes)) return '–';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let v = bytes;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return `${v.toFixed(i && v < 10 ? 1 : 0)} ${units[i]}`;
 }

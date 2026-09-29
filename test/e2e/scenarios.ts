@@ -10,7 +10,7 @@ import { prepareDocument } from '../../src/core/text/prepare';
 import { setPref } from '../../src/prefs';
 import { menuState, onAdd, onReindex } from '../../src/ui/context-menu';
 import { parseSearchResponse } from '../fixtures/seekchat-parse';
-import { assert, waitFor, type E2EContext } from './harness';
+import { assert, screenshot, waitFor, type E2EContext } from './harness';
 
 type Scenario = [string, (ctx: E2EContext) => Promise<void>];
 
@@ -276,11 +276,16 @@ export const scenarios: Scenario[] = [
     Zotero.Utilities.Internal.openPreferences(plugin().paneID);
     const prefsWin: any = await waitFor('preferences window', () => Services.wm.getMostRecentWindow('zotero:pref'), 10000);
     try {
-      const counts = await waitFor('status line', () => {
-        const el = prefsWin.document.getElementById('seekbook-counts');
-        return el?.textContent?.includes('Bücher fertig') ? el.textContent : null;
+      const counts = await waitFor('status cards', () => {
+        const books = prefsWin.document.getElementById('seekbook-stat-books')?.textContent;
+        const storage = prefsWin.document.getElementById('seekbook-stat-storage')?.textContent;
+        return books === '2' && /\d (KB|MB)/.test(storage || '') ? `${books} / ${storage}` : null;
       }, 20000);
+      const first = prefsWin.document.querySelector('#seekbook-preferences details');
+      assert(first?.id === 'seekbook-group-status', `first group: ${first?.id}`);
+      assert(/PDFs durchsuchbar/.test(prefsWin.document.getElementById('seekbook-counts').textContent), 'counts line');
       ctx.prefsCounts = counts;
+      await screenshot(ctx, 'preferences', prefsWin);
       // Connection test fills the model dropdown from /api/tags, embedding models first.
       prefsWin.document.getElementById('seekbook-test').click();
       const status = await waitFor('connection test', () => {
@@ -351,5 +356,23 @@ export const scenarios: Scenario[] = [
     // Articles get no entries.
     state = menuState([ctx.article]);
     assert(!state.add && !state.reindex && !state.info, `article: ${JSON.stringify(state)}`);
+  }],
+
+  ['item tree column "SeekBook" shows the book state', async (ctx) => {
+    const col = plugin().column;
+    const keys = Zotero.ItemTreeManager.getCustomColumns?.().map((c: any) => c.dataKey) || [];
+    assert(keys.some((k: string) => k.includes('seekbook-index-status')), `column not registered: ${keys.join()}`);
+    const cols = Zotero.getMainWindow().ZoteroPane.itemsView.tree._columns.getAsArray();
+    const mine = cols.find((c: any) => String(c.dataKey).includes('seekbook-index-status'));
+    assert(mine && !mine.hidden && Zotero.Prefs.get('seekbook.columnShown'), 'column not shown on first install');
+    await col.reload();
+    assert(col.cellText(ctx.book) === '✓', `book: '${col.cellText(ctx.book)}'`);
+    assert(col.cellText(ctx.excluded) === '⊘', `excluded: '${col.cellText(ctx.excluded)}'`);
+    assert(col.cellText(ctx.article) === '', 'article has no glyph');
+    assert(col.cellText(ctx.whole) === '', 'attachment row has no glyph');
+    const fresh = await newItem('book', 'Noch nicht im Index');
+    await attach(ctx, fresh, 'seekbook-other.pdf', 'X');
+    await col.reload();
+    assert(col.cellText(fresh) === '', 'unknown book has no glyph');
   }],
 ];
