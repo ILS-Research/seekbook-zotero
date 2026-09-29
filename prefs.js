@@ -16,8 +16,11 @@ pref("extensions.zotero.seekbook.allowedRemoteHosts", "");
 // Windows: words per window and step between window starts (changing either rebuilds the index).
 pref("extensions.zotero.seekbook.chunkWords", 200);
 pref("extensions.zotero.seekbook.strideWords", 120);
-// Texts per embedding request.
+// Texts per embedding request, and requests in flight at the same time while indexing.
 pref("extensions.zotero.seekbook.batchSize", 32);
+pref("extensions.zotero.seekbook.embedConcurrency", 2);
+// Memory for int8 vectors kept ready for searching, in MB (4096 dims: ~4.5 MB per 1000 windows).
+pref("extensions.zotero.seekbook.cacheMB", 1024);
 // Tag on a book or a single attachment that keeps it out of the index.
 pref("extensions.zotero.seekbook.excludeTag", "seekbook-exclude");
 // Libraries to index: "" = all, else comma-separated library keys ("user", "group:123").

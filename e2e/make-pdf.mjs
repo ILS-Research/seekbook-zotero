@@ -33,7 +33,7 @@ function writePdf(file, pages, outline = null, labels = null) {
         objects[ids[i] - 1] = `<< /Title (${esc(e.title)}) /Parent ${parent} 0 R` +
           (i > 0 ? ` /Prev ${ids[i - 1]} 0 R` : '') + (i < ids.length - 1 ? ` /Next ${ids[i + 1]} 0 R` : '') +
           (sub ? ` /First ${sub[0]} 0 R /Last ${sub[sub.length - 1]} 0 R /Count ${sub.length}` : '') +
-          ` /Dest [${kids[e.page]} 0 R /Fit] >>`;
+          ` /Dest [${kids[e.page]} 0 R ${e.y === undefined ? '/Fit' : `/XYZ 0 ${e.y} null`}] >>`;
       });
       return ids;
     };
@@ -87,6 +87,10 @@ const header = (printed) => `Handbuch Stadtklima ${printed}`;
 const ch1 = Array.from({ length: 5 }, (_, i) => pageLines('Starkregen', i === 0 ? ['Kapitel 1 Starkregen und Abfluss'] : []));
 const ch2 = Array.from({ length: 5 }, (_, i) => pageLines('Waermeinseln', i === 0 ? ['Kapitel 2 Waermeinseln im Quartier'] : []));
 ch2[3][5] = 'Die Stichprobe umfasst 48 Messstationen in dicht bebauten Quartieren der Innenstadt.';
+// Section 2.2 starts in the middle of chapter 2's third page (physical page 10), bookmark with y position.
+ch2[2][18] = '2.2 Stadtbaeume und Schatten';
+ch2[2][19] = 'Stadtbaeume spenden Schatten und kuehlen die Luft in engen Strassen deutlich.';
+const SECTION_Y = 790 - 13 * 19 + 10; // line 19 of the page (header is line 0), a little above the text
 
 const title = ['Handbuch Stadtklima', 'Ein Testbuch fuer SeekBook'];
 const toc = ['Inhaltsverzeichnis', 'Kapitel 1 Starkregen und Abfluss ........ 1', '1.1 Grundlagen ........ 2',
@@ -95,7 +99,7 @@ const body = [...ch1, ...ch2].map((lines, i) => [header(i + 1), ...lines]);
 writePdf(path.join(dir, 'seekbook-whole.pdf'), [title, toc, ...body], [
   { title: 'Titel', page: 0 },
   { title: 'Kapitel 1 Starkregen', page: 2, children: [{ title: 'Grundlagen', page: 3 }] },
-  { title: 'Kapitel 2 Waermeinseln', page: 7, children: [{ title: 'Messungen', page: 9 }] },
+  { title: 'Kapitel 2 Waermeinseln', page: 7, children: [{ title: 'Messungen', page: 9, y: 790 }, { title: '2.2 Stadtbaeume und Schatten', page: 9, y: SECTION_Y }] },
 ], '0 << /S /r >> 2 << /S /D /St 1 >>');
 writePdf(path.join(dir, 'seekbook-ch1.pdf'), ch1.map((lines, i) => [header(i + 1), ...lines]));
 writePdf(path.join(dir, 'seekbook-ch2.pdf'), ch2.map((lines, i) => [header(i + 6), ...lines]));

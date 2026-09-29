@@ -21,5 +21,5 @@ mkdir -p e2e/out test/assets
 "${DOCKER[@]}" run --rm -u "$(id -u):$(id -g)" \
   -v "$PWD/dist":/dist:ro -v "$PWD/e2e/out":/out \
   -v "$PWD/test/assets":/assets:ro \
-  -e E2E_TIMEOUT="${E2E_TIMEOUT:-300}" \
+  -e E2E_TIMEOUT="${E2E_TIMEOUT:-600}" \
   seekbook-e2e:latest

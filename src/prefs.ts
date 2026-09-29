@@ -13,6 +13,10 @@ export interface SeekBookPrefs {
   chunkWords: number;
   strideWords: number;
   batchSize: number;
+  /** Embedding requests in flight at once while indexing. */
+  embedConcurrency: number;
+  /** Memory for resident search vectors (MB). */
+  cacheMB: number;
   excludeTag: string;
   /** Library keys to index; empty = all. */
   libraries: string[];
@@ -62,6 +66,8 @@ export function readPrefs(): SeekBookPrefs {
     chunkWords,
     strideWords: Math.min(chunkWords, int('strideWords', 120, 10, 2000)),
     batchSize: int('batchSize', 32, 1, 256),
+    embedConcurrency: int('embedConcurrency', 2, 1, 8),
+    cacheMB: int('cacheMB', 1024, 64, 16384),
     excludeTag: str('excludeTag', 'seekbook-exclude'),
     libraries: str('libraries').split(/[,\s]+/).filter(Boolean),
     autoIndex: bool('autoIndex', false),

@@ -28,14 +28,16 @@ The host has no usable Node. **Everything runs in Docker** via the scripts (`doc
 |---|---|
 | `bootstrap.js`, `src/index.ts` | Plugin object `Zotero.SeekBook` (startup: store, endpoints, notifier, prefs pane, resume queue; JS API `search/stats/isIndexed`) |
 | `src/prefs.ts`, `prefs.js` | Typed prefs `extensions.zotero.seekbook.*` |
-| `src/core/text/` | Pure text preparation: `clean.ts` (running headers/footers, TOC pages, empty pages), `outline.ts` + `pdf-outline.ts` (copied from SeekChat, plus printed TOC as source `'toc'`, page labels), `windows.ts` (word windows, sentence snapping, page mapping), `prepare.ts` (per PDF pipeline, reading order, duplicates), `tokenize.ts` (SeekChat's tokenizer/`searchKey`) |
+| `src/core/text/` | Pure text preparation: `clean.ts` (running headers/footers, TOC pages, empty pages), `outline.ts` + `pdf-outline.ts` (copied from SeekChat, plus printed TOC as source `'toc'`, page labels), `chapters.ts` (headings located at character level, y position of bookmarks), `windows.ts` (word windows cut at chapter starts, sentence snapping, page mapping), `prepare.ts` (per PDF pipeline, reading order, duplicates), `tokenize.ts` (SeekChat's tokenizer/`searchKey`) |
 | `src/core/embed/` | `client.ts` (embedding HTTP with host guard, retry/backoff), `vectors.ts` (normalize, int8, cosine) |
-| `src/core/store.ts` | `seekbook.sqlite` on its own `Zotero.DBConnection`: books, documents (= queue), chunks, terms (BM25), pages, page_labels, outline |
+| `src/core/store.ts` | `seekbook.sqlite` on its own `Zotero.DBConnection`: books, documents (= queue), chunks, terms (BM25), doc_vectors (packed int8 per PDF), pages, page_labels, outline (with `char_start`, `how`); multi-row batched writes; schema migration in `migrate()` |
 | `src/core/indexer.ts` | Scan (books, PDFs, hashes, exclude tag), persistent queue, per-book processing (duplicates, embeddings) |
-| `src/core/ranking.ts`, `src/core/search.ts` | BM25, RRF (k = 60), passage merging; int8 scan → float32 rescoring, vector LRU cache |
+| `src/core/ranking.ts`, `src/core/search.ts` | BM25, RRF (k = 60), passage merging; int8 candidates → float32 rescoring |
+| `src/core/scan.ts`, `src/core/scan-pool.ts`, `src/worker/search-worker.ts` | int8 scan; pool of ChromeWorkers holding resident PDF vectors (LRU up to `cacheMB`, oversized scopes in turns, in-process fallback); the worker is its own bundle `content/scripts/search-worker.js` |
 | `src/core/rest.ts` | `/seekbook/stats`, `/seekbook/search`, `/seekbook/pages` |
 | `src/ui/preferences.ts`, `content/preferences.xhtml` | Settings pane with status and Index/Pause/Rebuild |
-| `src/ui/context-menu.ts`, `src/core/book-status.ts`, `locale/*/seekbook-main.ftl` | Item context menu for books (add, reindex, status dialog); MenuManager on Zotero 8+, DOM fallback on 7; labels via Fluent |
+| `src/ui/context-menu.ts`, `src/core/book-status.ts`, `locale/*/seekbook-main.ftl` | Item context menu for books (add, reindex, status); MenuManager on Zotero 8+, DOM fallback on 7; labels via Fluent |
+| `src/ui/status-window.ts`, `content/bookStatus.xhtml` | Live status window per book (indexer change events + 2 s poll, progress bar, Reindex) |
 | `src/ui/item-column.ts`, `src/core/book-state.ts` | Item tree column "SeekBook" (glyph per book from an in-memory state map, reloaded on indexer changes) |
 | `test/*.test.ts` | Unit tests (Node runner); `test/fixtures/seekchat-parse.ts` is a copy of SeekChat's `parseSearchResponse` |
 | `test/e2e/` | Harness + scenarios in real Zotero; `e2e/mock-embed.mjs` (hashed bag-of-words vectors, `/__fail` outage switch), `e2e/make-pdf.mjs` (fixtures) |
@@ -58,10 +60,16 @@ The host has no usable Node. **Everything runs in Docker** via the scripts (`doc
 - Page numbers are physical and 1-based **per PDF**; every search hit carries its `attachmentKey`.
 - Index config (provider, model, window sizes, doc prefix) lives in `meta.index_config`; a change clears the index
   on the next scan (`needsRebuild` in `/seekbook/stats`).
-- Search runs on the main thread (brute force over int8, yields per document); a ChromeWorker is a later step.
+- Search scans run in ChromeWorkers (`chrome://seekbook/content/scripts/search-worker.js`); typed arrays are
+  transferred, so a buffer is unusable on the sending side afterwards (`query.slice()` per worker).
+- Changes to windowing or chapters must raise `LAYOUT_VERSION` (indexer.ts): it is part of `index_config`, so old
+  indexes are rebuilt instead of mixing layouts.
+- Zotero's `queryAsync` wants `LIKE ?` with a bound value, and its row proxies cannot be `JSON.stringify`-ed.
 
 ## E2E
 
 - `e2e/out/results.json`, `zotero.log` (grep `SeekBook`), `prep-report.json` (fixture preparation),
-  `env-report.json` (FTS5, vector encoding), `assets-report.json` (real PDFs from `test/assets/`, git-ignored).
+  `env-report.json` (FTS5, vector encoding), `assets-report.json` (real PDFs from `test/assets/`, git-ignored),
+  `chapters-report.json` (outline offsets and window chapters of the fixture), `perf-report.json` (8 × 1000 windows at
+  4096 dims: write, cold/warm search, worker vs. in-process scan, UI gaps). Timeout default 600 s.
 - The harness runs once even though a scenario restarts the plugin (`test/e2e/entry.ts`).

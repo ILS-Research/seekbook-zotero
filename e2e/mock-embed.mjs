@@ -7,6 +7,7 @@ import http from 'node:http';
 let requests = 0;
 let inputs = 0;
 let failing = false;
+let delayMs = 0;
 
 function hash(s) {
   let h = 2166136261;
@@ -15,7 +16,7 @@ function hash(s) {
 }
 
 function vector(text, model) {
-  const dims = model.endsWith('-32') ? 32 : 64;
+  const dims = model.endsWith('-32') ? 32 : model.endsWith('-4096') ? 4096 : 64;
   const v = new Array(dims).fill(0);
   v[hash(model) % dims] += 0.5;
   for (const w of text.toLowerCase().match(/[\p{L}\p{N}]{4,}/gu) || []) v[hash(w) % dims] += 1;
@@ -32,6 +33,10 @@ const server = http.createServer(async (req, res) => {
     return json(200, { models: [{ name: 'llama3:8b' }, { name: 'mock-embed' }, { name: 'mock-embed-32' }] });
   }
   if (req.method === 'GET' && url.pathname === '/__requests') return json(200, { requests, inputs });
+  if (req.method === 'POST' && url.pathname === '/__delay') {
+    delayMs = Number(url.searchParams.get('ms')) || 0;
+    return json(200, { delayMs });
+  }
   if (req.method === 'POST' && url.pathname === '/__fail') {
     failing = url.searchParams.get('on') === '1';
     return json(200, { failing });
@@ -40,6 +45,7 @@ const server = http.createServer(async (req, res) => {
     let body = '';
     for await (const chunk of req) body += chunk;
     if (failing) return json(503, { error: 'mock outage' });
+    if (delayMs) await new Promise((r) => setTimeout(r, delayMs));
     const parsed = JSON.parse(body);
     const input = Array.isArray(parsed.input) ? parsed.input : [parsed.input];
     requests++;

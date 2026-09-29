@@ -6,7 +6,7 @@
  * pdf.js needs DOM and Worker APIs, which the plugin sandbox lacks, so the
  * module is imported into Zotero's main window (a privileged document).
  */
-import type { ReaderOutlineItem } from './outline';
+import { MAX_DEPTH, type ReaderOutlineItem } from './outline';
 
 const PDFJS_URL = 'resource://zotero/reader/pdf/build/pdf.mjs';
 const PDFJS_WORKER_URL = 'resource://zotero/reader/pdf/build/pdf.worker.mjs';
@@ -26,15 +26,26 @@ function loadPdfjs(): Promise<any> {
   return pdfjsPromise;
 }
 
-/** 0-based page index of an outline destination, or -1. */
-async function pageIndexOf(doc: any, dest: unknown): Promise<number> {
+/**
+ * Page index (0-based, -1 if unknown) and vertical position of an outline
+ * destination: `top` 0 = top edge of the page, 1 = bottom, null if the
+ * destination has no y coordinate (/Fit, /FitV …).
+ */
+async function locate(doc: any, dest: unknown): Promise<{ pageIndex: number; top: number | null }> {
   try {
     const explicit = typeof dest === 'string' ? await doc.getDestination(dest) : dest;
-    if (!Array.isArray(explicit) || !explicit.length) return -1;
+    if (!Array.isArray(explicit) || !explicit.length) return { pageIndex: -1, top: null };
     const ref = explicit[0];
-    return typeof ref === 'number' ? ref : await doc.getPageIndex(ref);
+    const pageIndex = typeof ref === 'number' ? ref : await doc.getPageIndex(ref);
+    // [ref, {name: 'XYZ'}, left, top, zoom] · [ref, {name: 'FitH' | 'FitBH'}, top]
+    const kind = explicit[1]?.name;
+    const y = kind === 'XYZ' ? explicit[3] : kind === 'FitH' || kind === 'FitBH' ? explicit[2] : null;
+    if (typeof y !== 'number') return { pageIndex, top: null };
+    const view: number[] = (await doc.getPage(pageIndex + 1)).view;
+    const height = view[3] - view[1];
+    return { pageIndex, top: height > 0 ? Math.min(1, Math.max(0, (view[3] - y) / height)) : null };
   } catch {
-    return -1;
+    return { pageIndex: -1, top: null };
   }
 }
 
@@ -43,9 +54,9 @@ async function convert(doc: any, items: any[] | null, depth: number): Promise<Re
   for (const it of items || []) {
     out.push({
       title: String(it.title || ''),
-      location: { position: { pageIndex: await pageIndexOf(doc, it.dest) } },
-      // Three levels: chapters and sections, one spare for a single root entry that gets unwrapped.
-      items: depth < 2 ? await convert(doc, it.items, depth + 1) : [],
+      location: { position: await locate(doc, it.dest) },
+      // MAX_DEPTH levels plus one spare for a single root entry that gets unwrapped.
+      items: depth < MAX_DEPTH ? await convert(doc, it.items, depth + 1) : [],
     });
   }
   return out;

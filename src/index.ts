@@ -4,7 +4,7 @@
  */
 import { Indexer } from './core/indexer';
 import { API_VERSION, registerEndpoints, statsPayload, unregisterEndpoints } from './core/rest';
-import { search, vectorCache, type SearchOptions } from './core/search';
+import { search, scanPool, type SearchOptions } from './core/search';
 import { Store } from './core/store';
 import { libraryKeyOf } from './core/zotero-items';
 import { readPrefs } from './prefs';
@@ -13,6 +13,7 @@ import { addLegacyMenu, registerMenus, removeLegacyMenu, unregisterMenus } from 
 import { formatBookStatus } from './core/book-status';
 import { t } from './i18n';
 import { ItemColumn } from './ui/item-column';
+import { StatusWindows } from './ui/status-window';
 import { log, logError } from './util/log';
 
 const FTL = 'seekbook-main.ftl';
@@ -27,6 +28,20 @@ class SeekBookPlugin {
   indexer = new Indexer(this.store);
   column = new ItemColumn(this.store, () => this.indexer.progress.bookPk);
   private offColumn: (() => void) | null = null;
+  statusWindows = new StatusWindows({
+    text: (item) => this.bookStatusText(item),
+    progress: (item) => {
+      const p = this.indexer.progress;
+      const lib = libraryKeyOf(item.libraryID);
+      const known = lib && this.store.knownBooks.has(`${lib}/${item.key}`);
+      return known && p.running && p.bookPk !== null && p.title && this.currentBookKey === `${lib}/${item.key}`
+        ? { chunk: p.chunk, chunks: p.chunks } : null;
+    },
+    onChange: (fn) => this.indexer.onChange(fn),
+    reindex: async (item) => { await this.indexer.indexBooks([item], true); },
+  });
+  /** "libraryKey/itemKey" of the book being indexed (for the status window). */
+  private currentBookKey: string | null = null;
   private observerID: string | null = null;
   private pendingItems = new Set<number>();
   private notifyTimer: Promise<void> | null = null;
@@ -37,6 +52,7 @@ class SeekBookPlugin {
     this.info = info;
     this.stopped = false;
     await this.store.open();
+    scanPool.setLimitMB(readPrefs().cacheMB);
     this.applyApiPref();
     registerMenus(info.id, `${info.rootURI}content/icons/seekbook.svg`, {
       isKnown: (item) => this.store.knownBooks.has(`${libraryKeyOf(item.libraryID)}/${item.key}`),
@@ -45,7 +61,10 @@ class SeekBookPlugin {
     });
     for (const win of Zotero.getMainWindows()) this.onMainWindowLoad(win);
     await this.column.register(info.id);
-    this.offColumn = this.indexer.onChange(() => void this.column.reload());
+    this.offColumn = this.indexer.onChange(() => {
+      void this.column.reload();
+      void this.trackCurrentBook();
+    });
     this.observerID = Zotero.Notifier.registerObserver({ notify: this.notify }, ['item'], 'seekbook');
     try {
       this.paneID = await Zotero.PreferencePanes.register({
@@ -70,13 +89,20 @@ class SeekBookPlugin {
     this.paneID = null;
     unregisterEndpoints();
     unregisterMenus();
+    this.statusWindows.closeAll();
     this.offColumn?.();
     this.offColumn = null;
     await this.column.unregister();
     for (const win of Zotero.getMainWindows()) this.onMainWindowUnload(win);
     await this.indexer.stop();
-    vectorCache.invalidate();
+    scanPool.terminate();
     await this.store.close();
+  }
+
+  private async trackCurrentBook(): Promise<void> {
+    const pk = this.indexer.progress.running ? this.indexer.progress.bookPk : null;
+    const book = pk === null ? null : await this.store.bookByPk(pk);
+    this.currentBookKey = book ? `${book.libraryKey}/${book.itemKey}` : null;
   }
 
   onMainWindowLoad(win: any): void {
@@ -118,8 +144,10 @@ class SeekBookPlugin {
   }
 
   async showBookStatus(item: any): Promise<void> {
-    Services.prompt.alert(Zotero.getMainWindow(), t('status.dialogTitle'), await this.bookStatusText(item));
+    this.statusWindows.show(item);
   }
+
+  onStatusWindowLoad = (win: any): void => this.statusWindows.onLoad(win);
 
   applyApiPref(): void {
     if (readPrefs().apiEnabled) registerEndpoints(this.store, this.indexer);
@@ -155,7 +183,7 @@ class SeekBookPlugin {
     }
     const doc = await this.store.documentByKey(libraryKey, key);
     if (doc) {
-      vectorCache.invalidate(doc.docPk);
+      scanPool.invalidate(doc.docPk);
       await this.store.deleteDocument(doc.docPk);
     }
     void this.column.reload();

@@ -7,8 +7,9 @@
  * ZotSeek parsers ignore (pageEnd, pageLabel, chapter, attachmentKey …).
  */
 import { embed } from './embed/client';
-import { bytesToFloat, bytesToInt8, dot, dotInt8, normalize } from './embed/vectors';
-import { bm25, mergePassages, ranked, rrf, TopK, type Hit, type Posting } from './ranking';
+import { bytesToFloat, dot, normalize } from './embed/vectors';
+import { loadDocVectors, ScanPool } from './scan-pool';
+import { bm25, mergePassages, ranked, rrf, type Hit, type Posting } from './ranking';
 import type { Store } from './store';
 import { termKeys } from './text/tokenize';
 import { readPrefs, type SeekBookPrefs } from '../prefs';
@@ -52,65 +53,9 @@ export interface SearchResult {
 
 /** Candidates from the int8 scan that get an exact float32 score. */
 export const CANDIDATES = 200;
-/** Upper bound of cached int8 vectors in bytes. */
-export const CACHE_BYTES = 200 * 1024 * 1024;
 
-interface DocVectors {
-  chunkPks: number[];
-  scales: Float32Array;
-  matrix: Int8Array;
-  dims: number;
-  bytes: number;
-}
-
-/** int8 vectors per document, least recently used dropped first. */
-export class VectorCache {
-  private map = new Map<number, DocVectors>();
-  private bytes = 0;
-
-  constructor(private limit = CACHE_BYTES) {}
-
-  async get(store: Store, docPk: number): Promise<DocVectors> {
-    const hit = this.map.get(docPk);
-    if (hit) {
-      this.map.delete(docPk);
-      this.map.set(docPk, hit);
-      return hit;
-    }
-    const rows = await store.queryArrays(
-      `SELECT chunk_pk, ${store.vectorColumn('embedding_q')}, scale FROM chunks WHERE doc_pk = ? ORDER BY idx`, [docPk]);
-    const vectors = rows.map((r) => bytesToInt8(store.decodeVector(r[1])));
-    const dims = vectors[0]?.length || 0;
-    const matrix = new Int8Array(dims * vectors.length);
-    vectors.forEach((v, i) => matrix.set(v.subarray(0, dims), i * dims));
-    const entry: DocVectors = {
-      chunkPks: rows.map((r) => r[0] as number),
-      scales: Float32Array.from(rows.map((r) => r[2] as number)),
-      matrix, dims, bytes: matrix.byteLength,
-    };
-    this.map.set(docPk, entry);
-    this.bytes += entry.bytes;
-    for (const [key, v] of this.map) {
-      if (this.bytes <= this.limit || key === docPk) break;
-      this.map.delete(key);
-      this.bytes -= v.bytes;
-    }
-    return entry;
-  }
-
-  invalidate(docPk?: number): void {
-    if (docPk === undefined) {
-      this.map.clear();
-      this.bytes = 0;
-      return;
-    }
-    const v = this.map.get(docPk);
-    if (v) this.bytes -= v.bytes;
-    this.map.delete(docPk);
-  }
-}
-
-export const vectorCache = new VectorCache();
+/** Candidate scan in worker threads, shared by search and indexer (invalidation). */
+export const scanPool = new ScanPool();
 
 interface ScopeDoc {
   docPk: number;
@@ -152,17 +97,11 @@ function inList(ids: number[]): string {
 async function semanticScores(store: Store, docs: ScopeDoc[], query: string, prefs: SeekBookPrefs): Promise<Map<number, number>> {
   const [vec] = await embed(prefs, [prefs.queryPrefix + query]);
   const q = normalize(vec);
-  const top = new TopK(CANDIDATES);
-  for (const d of docs) {
-    const v = await vectorCache.get(store, d.docPk);
-    if (v.dims !== q.length) {
-      throw new Error(`index has ${v.dims} dimensions, the model returned ${q.length}: rebuild the index (model changed?)`);
-    }
-    for (let i = 0; i < v.chunkPks.length; i++) top.push(v.chunkPks[i], dotInt8(q, v.matrix, i * v.dims, v.scales[i]));
-  }
-  const candidates = top.result().map((c) => c.id);
+  const candidates = (await scanPool.search(q, docs.map((d) => d.docPk), CANDIDATES, (pk) => loadDocVectors(store, pk)))
+    .map((c) => c.id);
   const exact = new Map<number, number>();
   if (!candidates.length) return exact;
+  // Final ranking on float32: as exact as a pure float32 search.
   const rows = await store.queryArrays(
     `SELECT chunk_pk, ${store.vectorColumn('embedding')} FROM chunks WHERE chunk_pk IN (${inList(candidates)})`);
   for (const r of rows) exact.set(r[0] as number, dot(q, bytesToFloat(store.decodeVector(r[1]))));

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.0 – 2026-09-29
+- **Chapter boundaries at character level**: each heading (bookmark, printed table of contents, detected heading) is
+  located in the cleaned text of its start page, using the bookmark's y position where the PDF has one; windows never
+  cross a chapter start, so every window belongs to exactly one chapter. Bookmarks are read up to four levels deep.
+  The outline table stores the offset and how it was found (`text` / `position` / `page`).
+- **Performance**: search scans in a pool of ChromeWorkers (Zotero's UI stays responsive), vectors per PDF packed into
+  one row (`doc_vectors`, one read per PDF), resident vectors kept up to `cacheMB` (default 1024 MB) and larger scopes
+  scanned in turns; indexing writes in multi-row batches and sends `embedConcurrency` (default 2) requests at once;
+  faster hex decoding.
+- **Live status window** for a book (context menu): progress bar while it is indexed, "Reindex" button, updates itself.
+- The index layout changed (layout version 2): existing indexes are rebuilt on the next "Index now".
+
 ## 0.1.3 – 2026-09-29
 - Settings reorganized like ZotSeek: collapsible groups, "Status" first with cards (books, windows, storage), model /
   average / last indexed line, action boxes "Index now" (recommended) and "Rebuild index".

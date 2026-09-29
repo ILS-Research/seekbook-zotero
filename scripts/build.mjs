@@ -37,6 +37,17 @@ await esbuild.build({
   logLevel: 'info',
 });
 
+// Search worker (ChromeWorker, own global scope): loaded by URL, so a separate bundle.
+await esbuild.build({
+  entryPoints: [path.join(root, 'src/worker/search-worker.ts')],
+  bundle: true,
+  format: 'iife',
+  platform: 'browser',
+  target: ['firefox128'],
+  outfile: path.join(buildDir, 'content/scripts/search-worker.js'),
+  logLevel: 'info',
+});
+
 if (pack) {
   const distDir = path.join(root, 'dist');
   fs.mkdirSync(distDir, { recursive: true });

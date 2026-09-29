@@ -8,7 +8,7 @@
  */
 import { embed, EmbeddingError } from './embed/client';
 import { floatToBytes, int8ToBytes, normalize, quantize } from './embed/vectors';
-import { vectorCache } from './search';
+import { scanPool } from './search';
 import type { DocRow, Store } from './store';
 import { readPdfStructure } from './text/pdf-outline';
 import { flattenOutline } from './text/outline';
@@ -38,8 +38,17 @@ export interface Progress {
 }
 
 /** Index configuration; a change invalidates all vectors. */
+/**
+ * Version of the text preparation. Raise it when windows or chapters come out
+ * differently, so existing indexes are rebuilt (2: windows stop at chapter starts).
+ */
+export const LAYOUT_VERSION = 2;
+
 export function indexConfig(p: SeekBookPrefs): string {
-  return JSON.stringify({ provider: p.provider, model: p.model, chunkWords: p.chunkWords, strideWords: p.strideWords, docPrefix: p.docPrefix });
+  return JSON.stringify({
+    provider: p.provider, model: p.model, chunkWords: p.chunkWords, strideWords: p.strideWords, docPrefix: p.docPrefix,
+    layout: LAYOUT_VERSION,
+  });
 }
 
 export function modelId(p: SeekBookPrefs): string {
@@ -122,7 +131,7 @@ export class Indexer {
     if (stored) {
       log('index configuration changed, rebuilding');
       await this.store.clearAll();
-      vectorCache.invalidate();
+      scanPool.invalidate();
     }
     await this.store.setMeta('index_config', current);
     return !!stored;
@@ -162,7 +171,7 @@ export class Indexer {
   }
 
   async removeBook(bookPk: number): Promise<void> {
-    for (const d of await this.store.documents(bookPk)) vectorCache.invalidate(d.docPk);
+    for (const d of await this.store.documents(bookPk)) scanPool.invalidate(d.docPk);
     await this.store.deleteBook(bookPk);
   }
 
@@ -206,7 +215,7 @@ export class Indexer {
       if (bookExcluded || hasTag(att, prefs.excludeTag)) {
         if (doc.status !== 'excluded') {
           await this.store.clearContent(doc.docPk);
-          vectorCache.invalidate(doc.docPk);
+          scanPool.invalidate(doc.docPk);
           changed = true;
         }
         await this.store.setStatus(doc.docPk, 'excluded', { error: `tag ${prefs.excludeTag}`, duplicateOf: null });
@@ -227,7 +236,7 @@ export class Indexer {
     }
     // Attachments that are gone.
     for (const d of known.values()) {
-      vectorCache.invalidate(d.docPk);
+      scanPool.invalidate(d.docPk);
       await this.store.deleteDocument(d.docPk);
       changed = true;
     }
@@ -305,7 +314,7 @@ export class Indexer {
   async rebuild(): Promise<void> {
     await this.stop();
     await this.store.clearAll();
-    vectorCache.invalidate();
+    scanPool.invalidate();
     await this.store.setMeta('index_config', indexConfig(this.prefs()));
     await this.indexNow();
   }
@@ -362,7 +371,7 @@ export class Indexer {
       if (dupOf) {
         if (d.status === 'ready') {
           await this.store.clearContent(d.docPk);
-          vectorCache.invalidate(d.docPk);
+          scanPool.invalidate(d.docPk);
         }
         await this.store.setStatus(d.docPk, 'duplicate', { duplicateOf: Number(dupOf), error: null });
         continue;
@@ -423,18 +432,30 @@ export class Indexer {
     this.progress.chunk = 0;
     this.progress.chunks = p.windows.length;
     this.emit();
-    for (let i = 0; i < p.windows.length; i += prefs.batchSize) {
-      if (this.stopRequested) {
-        const err = new Error('stopped');
-        err.name = 'StopError';
-        throw err;
+    // Batches in parallel (embedConcurrency), results kept in window order.
+    const batches: number[] = [];
+    for (let i = 0; i < p.windows.length; i += prefs.batchSize) batches.push(i);
+    const results: Float32Array[][] = new Array(batches.length);
+    let next = 0;
+    let done = 0;
+    const lane = async () => {
+      while (next < batches.length) {
+        if (this.stopRequested) {
+          const err = new Error('stopped');
+          err.name = 'StopError';
+          throw err;
+        }
+        const b = next++;
+        const batch = p.windows.slice(batches[b], batches[b] + prefs.batchSize);
+        const out = await embed(prefs, batch.map((w) => embeddingText(bookTitle, w.chapter, w.text, prefs.docPrefix)));
+        results[b] = out.map((v) => normalize(v));
+        done += out.length;
+        this.progress.chunk = done;
+        this.emit();
       }
-      const batch = p.windows.slice(i, i + prefs.batchSize);
-      const out = await embed(prefs, batch.map((w) => embeddingText(bookTitle, w.chapter, w.text, prefs.docPrefix)));
-      for (const v of out) vectors.push(normalize(v));
-      this.progress.chunk = vectors.length;
-      this.emit();
-    }
+    };
+    await Promise.all(Array.from({ length: Math.min(prefs.embedConcurrency, batches.length) }, lane));
+    for (const r of results) vectors.push(...r);
     const chunks = p.windows.map((w, i) => {
       const keys = termKeys(`${w.chapter} ${w.text}`);
       const terms = new Map<string, number>();
@@ -450,12 +471,12 @@ export class Indexer {
       chunks,
       pages: p.stripped.map((x) => ({ page: x.pageNumber, text: x.text })),
       labels: p.labels,
-      outline: flattenOutline(p.outline),
+      outline: flattenOutline(p.outline, p.chapters),
       outlineSource: p.outline.source,
       pageCount: p.pages,
     });
     await this.store.setMeta('dims', String(vectors[0]?.length || 0));
-    vectorCache.invalidate(d.docPk);
+    scanPool.invalidate(d.docPk);
     log(`indexed ${d.attachmentKey}: ${chunks.length} windows, outline ${p.outline.source}`);
   }
 }

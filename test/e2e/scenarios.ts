@@ -5,6 +5,9 @@
  */
 import { readPages } from '../../src/core/indexer';
 import { PATHS } from '../../src/core/rest';
+import { scanPool } from '../../src/core/search';
+import { ScanPool } from '../../src/core/scan-pool';
+import { normalize, quantize, floatToBytes, int8ToBytes } from '../../src/core/embed/vectors';
 import { readPdfStructure } from '../../src/core/text/pdf-outline';
 import { prepareDocument } from '../../src/core/text/prepare';
 import { setPref } from '../../src/prefs';
@@ -374,5 +377,114 @@ export const scenarios: Scenario[] = [
     await attach(ctx, fresh, 'seekbook-other.pdf', 'X');
     await col.reload();
     assert(col.cellText(fresh) === '', 'unknown book has no glyph');
+  }],
+
+  ['chapter boundaries at character level (bookmark y position, mid-page section)', async (ctx) => {
+    const d = await doc(ctx.whole);
+    // Plain objects: Zotero's row proxies cannot be serialized.
+    const rows = (await plugin().store.query('SELECT title, page_start, char_start, how FROM outline WHERE doc_pk = ? ORDER BY char_start', [d.docPk]))
+      .map((r: any) => ({ title: r.title, page_start: r.page_start, char_start: r.char_start, how: r.how }));
+    const sec = rows.find((r: any) => r.title === '2.2 Stadtbaeume und Schatten');
+    assert(sec && sec.page_start === 10 && sec.how === 'text', `section row: ${JSON.stringify(rows.map((r: any) => [r.title, r.page_start, r.char_start, r.how]))}`);
+    const chunks = (await plugin().store.query('SELECT idx, chapter, text, page_start, page_end FROM chunks WHERE doc_pk = ? ORDER BY idx', [d.docPk]))
+      .map((r: any) => ({ idx: r.idx, chapter: r.chapter, text: r.text, page_start: r.page_start, page_end: r.page_end }));
+    const inSection = chunks.filter((c: any) => c.text.includes('Stadtbaeume spenden Schatten'));
+    assert(inSection.length && inSection.every((c: any) => c.chapter.endsWith('2.2 Stadtbaeume und Schatten')), JSON.stringify(inSection.map((c: any) => c.chapter)));
+    // The text before the heading on page 10 still belongs to "Messungen", and no window crosses the boundary.
+    const before = chunks.filter((c: any) => c.page_end === 10 && c.chapter.endsWith('Messungen'));
+    assert(before.length, `no "Messungen" window ends on page 10: ${JSON.stringify(chunks.map((c: any) => [c.idx, c.page_start, c.page_end, c.chapter]))}`);
+    assert(before.every((c: any) => !c.text.includes('Stadtbaeume spenden')), 'a window crosses the section start');
+    await writeReport(ctx, 'chapters-report.json', { outline: rows, windows: chunks.map((c: any) => ({ idx: c.idx, pages: `${c.page_start}-${c.page_end}`, chapter: c.chapter, start: c.text.slice(0, 60) })) });
+  }],
+
+  ['status window updates live while the book is reindexed', async (ctx) => {
+    setPref('batchSize', 4);
+    await mock('/__delay?ms=150', 'POST');
+    try {
+      const win: any = plugin().statusWindows.show(ctx.book);
+      const body = await waitFor('status window', () => (win.document?.getElementById('seekbook-status-body')?.textContent?.includes('fertig') ? win.document.getElementById('seekbook-status-body') : null), 10000);
+      assert(/Gesamtausgabe: fertig/.test(body.textContent), body.textContent);
+      win.document.getElementById('seekbook-status-reindex').click();
+      const bar = await waitFor('progress bar in the open window', () => body.querySelector('progress'), 15000);
+      const first = Number(bar.value);
+      await waitFor('progress moves on', () => { const b = body.querySelector('progress'); return b && Number(b.value) > first; }, 15000);
+      await waitFor('ready again', () => !body.querySelector('progress') && /Gesamtausgabe: fertig/.test(body.textContent), 30000);
+      assert(/Aktualisiert/.test(win.document.getElementById('seekbook-status-updated').textContent), 'no update time');
+      win.close();
+    } finally {
+      setPref('batchSize', 32);
+      await mock('/__delay?ms=0', 'POST');
+    }
+  }],
+
+  ['performance: 4096 dimensions, writing, cold and warm search in workers, UI responsiveness', async (ctx) => {
+    const store = plugin().store;
+    const DOCS = 8;
+    const WINDOWS = 1000;
+    const DIMS = 4096;
+    const report: any = { docs: DOCS, windowsPerDoc: WINDOWS, dims: DIMS, write: [] };
+    let seed = 11;
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff) - 0.5;
+    const itemKeys: string[] = [];
+    const bookPks: number[] = [];
+    try {
+      for (let d = 0; d < DOCS; d++) {
+        const itemKey = `PERF${String(d).padStart(4, '0')}`;
+        itemKeys.push(itemKey);
+        const bookPk = await store.upsertBook({ libraryKey: 'user', itemKey, title: `Perf ${d}`, authors: [], year: null, language: '' });
+        bookPks.push(bookPk);
+        const row = await store.upsertDocument({ bookPk, attachmentKey: `PERFATT${d}`, attachmentTitle: 'perf.pdf', fileName: 'perf.pdf', sortOrder: 0 });
+        const chunks = Array.from({ length: WINDOWS }, (_, i) => {
+          const v = normalize(Array.from({ length: DIMS }, rnd));
+          const { q, scale } = quantize(v);
+          const text = `Fenster ${i} des Testbuchs ${d} mit einigen Woertern Messung${i % 50} Modell${i % 7}`;
+          return { idx: i, pageStart: 1 + (i >> 2), pageEnd: 1 + (i >> 2), charStart: i * 100, charEnd: i * 100 + 90, chapter: 'Kapitel', text,
+            embedding: floatToBytes(v), embeddingQ: int8ToBytes(q), scale, terms: new Map([[`messung${i % 50}`, 1], [`fenster`, 1]]), nterms: 10 };
+        });
+        const t0 = Date.now();
+        await store.writeDocument(row.docPk, `perf${d}`, 'ollama:mock-embed-4096', { chunks, pages: [], labels: null, outline: [], outlineSource: 'blocks', pageCount: 250 });
+        report.write.push(Date.now() - t0);
+      }
+      setPref('model', 'mock-embed-4096');
+      const win = Zotero.getMainWindow();
+      // Main-thread responsiveness: the largest gap between 10 ms ticks while a search runs.
+      const measure = async (fn: () => Promise<any>) => {
+        let last = Date.now();
+        let maxGap = 0;
+        let running = true;
+        const tick = () => { const now = Date.now(); maxGap = Math.max(maxGap, now - last); last = now; if (running) win.setTimeout(tick, 10); };
+        win.setTimeout(tick, 10);
+        const t0 = Date.now();
+        const r = await fn();
+        running = false;
+        return { ms: Date.now() - t0, maxGap, r };
+      };
+      scanPool.invalidate();
+      const q = { q: 'Messung Modell Fenster', topK: '10', mode: 'semantic', itemKeys: itemKeys.join(',') };
+      const cold = await measure(() => api(PATHS.search, q));
+      const warm = await measure(() => api(PATHS.search, q));
+      assert(cold.r.status === 200 && warm.r.json.results.length === 10, JSON.stringify(warm.r.json).slice(0, 200));
+      report.search = { coldMs: cold.ms, warmMs: warm.ms, coldMaxUiGapMs: cold.maxGap, warmMaxUiGapMs: warm.maxGap, pool: scanPool.stats(), last: scanPool.last };
+      // Same scope in-process (no workers), for comparison.
+      const local = new ScanPool(1024 * 1024 * 1024, 0);
+      const qv = normalize(Array.from({ length: DIMS }, rnd));
+      const { loadDocVectors } = await import('../../src/core/scan-pool');
+      const docPks = (await store.query('SELECT doc_pk FROM documents WHERE attachment_key LIKE ?', ['PERFATT%'])).map((r: any) => r.doc_pk);
+      await local.search(qv, docPks, 200, (pk: number) => loadDocVectors(store, pk));
+      const inProcess = await measure(() => local.search(qv, docPks, 200, (pk: number) => loadDocVectors(store, pk)));
+      const inWorkers = await measure(() => scanPool.search(qv, docPks, 200, (pk: number) => loadDocVectors(store, pk)));
+      report.scan200 = { inProcessMs: inProcess.ms, inProcessMaxUiGapMs: inProcess.maxGap, workersMs: inWorkers.ms, workersMaxUiGapMs: inWorkers.maxGap, workers: scanPool.stats().workers };
+      local.terminate();
+      const fileBytes = (await Zotero.getMainWindow().IOUtils.stat(Zotero.DataDirectory.getDatabase('seekbook'))).size;
+      report.dbMB = Math.round(fileBytes / 1048576);
+      await writeReport(ctx, 'perf-report.json', report);
+      assert(scanPool.stats().workers > 0, 'no search workers');
+      assert(warm.ms < 3000, `warm search took ${warm.ms} ms`);
+      assert(inWorkers.maxGap < 250, `UI blocked ${inWorkers.maxGap} ms during a worker scan`);
+    } finally {
+      setPref('model', 'mock-embed');
+      for (const pk of bookPks) await store.deleteBook(pk);
+      scanPool.invalidate();
+    }
   }],
 ];

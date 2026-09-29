@@ -10,7 +10,10 @@
 import { base64ToBytes, bytesToBase64, bytesToHex, hexToBytes } from '../util/base64';
 import { log } from '../util/log';
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
+/** Rows per multi-row INSERT (chunks carry two hex vectors each, so fewer of them). */
+const BATCH_ROWS = 400;
+const CHUNK_BATCH_ROWS = 25;
 export const DB_NAME = 'seekbook';
 
 export type DocStatus = 'queued' | 'indexing' | 'ready' | 'failed' | 'excluded' | 'duplicate';
@@ -62,7 +65,7 @@ export interface DocContent {
   chunks: ChunkInsert[];
   pages: { page: number; text: string }[];
   labels: (string | null)[] | null;
-  outline: { id: string; parent: string; title: string; pageStart: number; pageEnd: number; depth: number }[];
+  outline: { id: string; parent: string; title: string; pageStart: number; pageEnd: number; depth: number; charStart: number | null; how: string | null }[];
   outlineSource: string;
   pageCount: number;
 }
@@ -107,6 +110,10 @@ const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS terms_chunk ON terms(chunk_pk)`,
   `CREATE TABLE IF NOT EXISTS page_labels (doc_pk INTEGER, page INTEGER, label TEXT, PRIMARY KEY(doc_pk, page))`,
   `CREATE TABLE IF NOT EXISTS pages (doc_pk INTEGER, page INTEGER, text TEXT, PRIMARY KEY(doc_pk, page))`,
+  // All int8 vectors of one PDF packed into one row: the search loads a PDF with one read.
+  `CREATE TABLE IF NOT EXISTS doc_vectors (
+    doc_pk INTEGER PRIMARY KEY, dims INTEGER NOT NULL, n INTEGER NOT NULL,
+    chunk_pks NOT NULL, scales NOT NULL, matrix NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS outline (
     doc_pk INTEGER, node_id TEXT, parent_id TEXT, title TEXT,
     page_start INTEGER, page_end INTEGER, depth INTEGER, source TEXT,
@@ -170,8 +177,7 @@ export class Store {
   async open(path: string = DB_NAME): Promise<void> {
     this.db = new Zotero.DBConnection(path);
     for (const sql of SCHEMA) await this.db.queryAsync(sql);
-    const version = await this.getMeta('schema_version');
-    if (!version) await this.setMeta('schema_version', String(SCHEMA_VERSION));
+    await this.migrate();
     let encoding = await this.getMeta('vector_encoding');
     if (!encoding) {
       encoding = (await this.probeHex()) ? 'hex' : 'base64';
@@ -180,6 +186,14 @@ export class Store {
     this.encoding = encoding === 'hex' ? 'hex' : 'base64';
     this.knownBooks = new Set((await rows(this.db, 'SELECT library_key, item_key FROM books')).map((r) => `${r.library_key}/${r.item_key}`));
     log(`store open (${path}), vectors as ${encoding}`);
+  }
+
+  /** Schema 1 → 2: chapter offsets in `outline` (doc_vectors is created by SCHEMA). */
+  private async migrate(): Promise<void> {
+    const cols = new Set((await rows(this.db, 'PRAGMA table_info(outline)')).map((r) => r.name));
+    if (!cols.has('char_start')) await this.db.queryAsync('ALTER TABLE outline ADD COLUMN char_start INTEGER');
+    if (!cols.has('how')) await this.db.queryAsync('ALTER TABLE outline ADD COLUMN how TEXT');
+    await this.setMeta('schema_version', String(SCHEMA_VERSION));
   }
 
   /** Does SQLite have unhex() (3.41+), and do bytes survive the round trip? */
@@ -330,7 +344,7 @@ export class Store {
 
   private async deleteDocumentContent(docPk: number): Promise<void> {
     await this.db.queryAsync('DELETE FROM terms WHERE chunk_pk IN (SELECT chunk_pk FROM chunks WHERE doc_pk = ?)', [docPk]);
-    for (const table of ['chunks', 'pages', 'page_labels', 'outline']) {
+    for (const table of ['chunks', 'pages', 'page_labels', 'outline', 'doc_vectors']) {
       await this.db.queryAsync(`DELETE FROM ${table} WHERE doc_pk = ?`, [docPk]);
     }
   }
@@ -349,39 +363,42 @@ export class Store {
     await this.transaction(() => this.deleteDocumentContent(docPk));
   }
 
+  /** Multi-row INSERT in batches; `placeholders` is the VALUES tuple of one row, e.g. "(?, ?, unhex(?))". */
+  private async insertMany(sql: string, placeholders: string, rowsIn: unknown[][], batch = BATCH_ROWS): Promise<void> {
+    for (let i = 0; i < rowsIn.length; i += batch) {
+      const part = rowsIn.slice(i, i + batch);
+      await this.db.queryAsync(`${sql} VALUES ${part.map(() => placeholders).join(', ')}`, part.flat());
+    }
+  }
+
   /** Replaces all content of a document in one transaction and marks it ready. */
   async writeDocument(docPk: number, contentHash: string, modelId: string, c: DocContent): Promise<void> {
     await this.transaction(async () => {
       await this.deleteDocumentContent(docPk);
-      for (const ch of c.chunks) {
+      // Explicit keys: no round trip for last_insert_rowid() per chunk.
+      const base = Number(await this.db.valueQueryAsync('SELECT COALESCE(MAX(chunk_pk), 0) FROM chunks')) + 1;
+      const v = this.vectorParam;
+      await this.insertMany(
+        'INSERT INTO chunks (chunk_pk, doc_pk, idx, page_start, page_end, char_start, char_end, chapter, text, embedding, embedding_q, scale, nterms)',
+        `(?, ?, ?, ?, ?, ?, ?, ?, ?, ${v}, ${v}, ?, ?)`,
+        c.chunks.map((ch, i) => [base + i, docPk, ch.idx, ch.pageStart, ch.pageEnd, ch.charStart, ch.charEnd, ch.chapter, ch.text,
+          this.encodeVector(ch.embedding), this.encodeVector(ch.embeddingQ), ch.scale, ch.nterms]),
+        CHUNK_BATCH_ROWS,
+      );
+      await this.insertMany('INSERT INTO terms (term, chunk_pk, tf)', '(?, ?, ?)',
+        c.chunks.flatMap((ch, i) => [...ch.terms].map(([term, tf]) => [term, base + i, tf])));
+      await this.insertMany('INSERT INTO pages (doc_pk, page, text)', '(?, ?, ?)', c.pages.map((p) => [docPk, p.page, p.text]), 100);
+      await this.insertMany('INSERT INTO page_labels (doc_pk, page, label)', '(?, ?, ?)',
+        (c.labels || []).map((l, i) => [docPk, i + 1, l]).filter((r) => r[2]));
+      await this.insertMany(
+        'INSERT INTO outline (doc_pk, node_id, parent_id, title, page_start, page_end, depth, source, char_start, how)',
+        '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        c.outline.map((o) => [docPk, o.id, o.parent, o.title, o.pageStart, o.pageEnd, o.depth, c.outlineSource, o.charStart, o.how]));
+      if (c.chunks.length) {
+        const packed = packVectors(c.chunks.map((ch, i) => ({ chunkPk: base + i, q: ch.embeddingQ, scale: ch.scale })));
         await this.db.queryAsync(
-          `INSERT INTO chunks (doc_pk, idx, page_start, page_end, char_start, char_end, chapter, text, embedding, embedding_q, scale, nterms)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ${this.vectorParam}, ${this.vectorParam}, ?, ?)`,
-          [docPk, ch.idx, ch.pageStart, ch.pageEnd, ch.charStart, ch.charEnd, ch.chapter, ch.text,
-            this.encodeVector(ch.embedding), this.encodeVector(ch.embeddingQ), ch.scale, ch.nterms],
-        );
-        const chunkPk = await this.db.valueQueryAsync('SELECT last_insert_rowid()');
-        // One statement per 200 terms (SQLite's parameter limit is far above 600).
-        const entries = [...ch.terms];
-        for (let i = 0; i < entries.length; i += 200) {
-          const part = entries.slice(i, i + 200);
-          await this.db.queryAsync(
-            `INSERT INTO terms (term, chunk_pk, tf) VALUES ${part.map(() => '(?, ?, ?)').join(', ')}`,
-            part.flatMap(([term, tf]) => [term, chunkPk, tf]),
-          );
-        }
-      }
-      for (const p of c.pages) {
-        await this.db.queryAsync('INSERT INTO pages (doc_pk, page, text) VALUES (?, ?, ?)', [docPk, p.page, p.text]);
-      }
-      for (let i = 0; i < (c.labels?.length || 0); i++) {
-        const label = c.labels![i];
-        if (label) await this.db.queryAsync('INSERT INTO page_labels (doc_pk, page, label) VALUES (?, ?, ?)', [docPk, i + 1, label]);
-      }
-      for (const o of c.outline) {
-        await this.db.queryAsync(
-          'INSERT INTO outline (doc_pk, node_id, parent_id, title, page_start, page_end, depth, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-          [docPk, o.id, o.parent, o.title, o.pageStart, o.pageEnd, o.depth, c.outlineSource],
+          `INSERT INTO doc_vectors (doc_pk, dims, n, chunk_pks, scales, matrix) VALUES (?, ?, ?, ${v}, ${v}, ${v})`,
+          [docPk, packed.dims, packed.n, this.encodeVector(packed.chunkPks), this.encodeVector(packed.scales), this.encodeVector(packed.matrix)],
         );
       }
       await this.db.queryAsync(
@@ -390,6 +407,27 @@ export class Store {
         [contentHash, modelId, c.pageCount, Date.now(), c.outlineSource, docPk],
       );
     });
+  }
+
+  /** Packed int8 vectors of a document, or null (indexed before schema 2: see VectorCache). */
+  async docVectors(docPk: number): Promise<PackedVectors | null> {
+    const r = (await arrays(this.db,
+      `SELECT dims, n, ${this.vectorColumn('chunk_pks')}, ${this.vectorColumn('scales')}, ${this.vectorColumn('matrix')}
+       FROM doc_vectors WHERE doc_pk = ?`, [docPk]))[0];
+    if (!r) return null;
+    return unpackVectors(Number(r[0]), Number(r[1]), this.decodeVector(r[2]), this.decodeVector(r[3]), this.decodeVector(r[4]));
+  }
+
+  /** Writes the packed row for a document indexed before schema 2 (built from its chunks). */
+  async backfillDocVectors(docPk: number, p: PackedVectors): Promise<void> {
+    const v = this.vectorParam;
+    const bytes = packVectors(Array.from(p.chunkPks, (chunkPk, i) => ({
+      chunkPk, q: new Uint8Array(p.matrix.buffer, p.matrix.byteOffset + i * p.dims, p.dims), scale: p.scales[i],
+    })));
+    await this.db.queryAsync(
+      `INSERT OR REPLACE INTO doc_vectors (doc_pk, dims, n, chunk_pks, scales, matrix) VALUES (?, ?, ?, ${v}, ${v}, ${v})`,
+      [docPk, bytes.dims, bytes.n, this.encodeVector(bytes.chunkPks), this.encodeVector(bytes.scales), this.encodeVector(bytes.matrix)],
+    );
   }
 
   // Lookups for search and /pages
@@ -430,7 +468,7 @@ export class Store {
   async clearAll(): Promise<void> {
     this.knownBooks.clear();
     await this.transaction(async () => {
-      for (const table of ['terms', 'chunks', 'pages', 'page_labels', 'outline', 'documents', 'books']) {
+      for (const table of ['terms', 'chunks', 'pages', 'page_labels', 'outline', 'doc_vectors', 'documents', 'books']) {
         await this.db.queryAsync(`DELETE FROM ${table}`);
       }
     });
@@ -446,4 +484,37 @@ export class Store {
       return false;
     }
   }
+}
+
+export interface PackedVectors {
+  dims: number;
+  chunkPks: Int32Array;
+  scales: Float32Array;
+  /** n × dims int8 values, row-major. */
+  matrix: Int8Array;
+}
+
+/** Bytes for the doc_vectors row (little-endian typed arrays, as on every platform Zotero runs on). */
+export function packVectors(rowsIn: { chunkPk: number; q: Uint8Array; scale: number }[]): { dims: number; n: number; chunkPks: Uint8Array; scales: Uint8Array; matrix: Uint8Array } {
+  const n = rowsIn.length;
+  const dims = n ? rowsIn[0].q.length : 0;
+  const pks = new Int32Array(n);
+  const scales = new Float32Array(n);
+  const matrix = new Uint8Array(n * dims);
+  rowsIn.forEach((r, i) => {
+    pks[i] = r.chunkPk;
+    scales[i] = r.scale;
+    matrix.set(r.q.subarray(0, dims), i * dims);
+  });
+  return { dims, n, chunkPks: new Uint8Array(pks.buffer), scales: new Uint8Array(scales.buffer), matrix };
+}
+
+export function unpackVectors(dims: number, n: number, pks: Uint8Array, scales: Uint8Array, matrix: Uint8Array): PackedVectors {
+  const copy = (b: Uint8Array) => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
+  return {
+    dims,
+    chunkPks: new Int32Array(copy(pks), 0, n),
+    scales: new Float32Array(copy(scales), 0, n),
+    matrix: new Int8Array(copy(matrix), 0, n * dims),
+  };
 }

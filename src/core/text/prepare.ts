@@ -4,9 +4,10 @@
  * (reading files, storing rows) lives in indexer.ts.
  */
 import { cleanPages } from './clean';
-import { buildOutline, chapterPathAt, type Outline, type ReaderOutlineItem } from './outline';
+import { chapterStarts, pathAt, type ChapterStart } from './chapters';
+import { buildOutline, type Outline, type ReaderOutlineItem } from './outline';
 import type { Page } from './types';
-import { makeWindows, normalizedWords, type TextWindow } from './windows';
+import { joinPages, makeWindows, normalizedWords, type TextWindow } from './windows';
 
 export interface PreparedWindow extends TextWindow {
   /** Chapter path "Chapter › Section", '' if unknown (or only page blocks). */
@@ -22,6 +23,8 @@ export interface PreparedDocument {
   emptyPages: number[];
   /** All pages without running headers/footers (for /seekbook/pages). */
   stripped: Page[];
+  /** Where each outline node starts in the cleaned text (empty for page blocks). */
+  chapters: ChapterStart[];
 }
 
 export const CHAPTER_SEPARATOR = ' › ';
@@ -50,10 +53,13 @@ export function prepareDocument(rawPages: Page[], opts: PrepareOptions = {}): Pr
     pages: rawPages.filter((p) => tocSet.has(p.pageNumber)),
     labels: opts.labels,
   });
-  const windows = makeWindows(clean.pages, opts.chunkWords, opts.strideWords).map((w) => {
-    const path = outline.source === 'blocks' ? [] : chapterPathAt(outline, w.pageStart);
+  const chapters = chapterStarts(outline, clean.pages, joinPages(clean.pages));
+  // Windows stop at chapter starts: every window lies in exactly one chapter.
+  const windows = makeWindows(clean.pages, opts.chunkWords, opts.strideWords, chapters.map((c) => c.charStart)).map((w) => {
+    const path = [...pathAt(chapters, w.segmentStart)];
     if (opts.docTitle && (path.length || outline.source === 'blocks')) path.unshift(opts.docTitle);
-    return { ...w, chapter: path.join(CHAPTER_SEPARATOR) };
+    const { segment, segmentStart, ...rest } = w;
+    return { ...rest, chapter: path.join(CHAPTER_SEPARATOR) };
   });
   return {
     pages: rawPages.length,
@@ -63,6 +69,7 @@ export function prepareDocument(rawPages: Page[], opts: PrepareOptions = {}): Pr
     tocPages: clean.tocPages,
     emptyPages: clean.emptyPages,
     stripped: clean.stripped,
+    chapters,
   };
 }
 

@@ -39,8 +39,15 @@ export function bytesToHex(bytes: Uint8Array): string {
   return parts.join('');
 }
 
+const NIBBLE = new Uint8Array(128);
+for (let i = 0; i < 16; i++) {
+  NIBBLE['0123456789ABCDEF'.charCodeAt(i)] = i;
+  NIBBLE['0123456789abcdef'.charCodeAt(i)] = i;
+}
+
+/** Hot path when vectors are loaded (megabytes per PDF): char codes and a lookup table, no substrings. */
 export function hexToBytes(s: string): Uint8Array {
   const out = new Uint8Array(s.length >> 1);
-  for (let i = 0; i < out.length; i++) out[i] = parseInt(s.substr(i * 2, 2), 16);
+  for (let i = 0, j = 0; i < out.length; i++, j += 2) out[i] = (NIBBLE[s.charCodeAt(j)] << 4) | NIBBLE[s.charCodeAt(j + 1)];
   return out;
 }

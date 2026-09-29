@@ -8,6 +8,7 @@
  * (last resort; no chapter path goes into the embedding then). Pure, unit-tested.
  */
 import { parseTocEntries, type TocEntry } from './clean';
+import type { ChapterStart } from './chapters';
 import type { Page } from './types';
 
 const UNTITLED = 'Untitled';
@@ -23,9 +24,22 @@ export interface OutlineNode {
   /** 1-based, inclusive. */
   pageStart: number;
   pageEnd: number;
+  /** Where on the start page the heading sits: 0 = top, 1 = bottom; null if unknown (bookmarks only). */
+  top: number | null;
   tokens: number;
   children: OutlineNode[];
 }
+
+/** Input of the tree builder: a heading with its start page and sub-headings, any depth. */
+export interface OutlineEntry {
+  title: string;
+  page: number;
+  top?: number | null;
+  children: OutlineEntry[];
+}
+
+/** Levels kept from bookmarks (a single root entry that gets unwrapped does not count). */
+export const MAX_DEPTH = 4;
 
 export type OutlineSource = 'pdf' | 'toc' | 'headings' | 'blocks';
 
@@ -37,7 +51,8 @@ export interface Outline {
 /** Item shape of the reader's outline state (pdf.js bookmarks as Zotero's reader stores them). */
 export interface ReaderOutlineItem {
   title?: string;
-  location?: { position?: { pageIndex?: number } };
+  /** top: vertical position of the destination on its page, 0 = top edge, 1 = bottom (SeekBook addition). */
+  location?: { position?: { pageIndex?: number; top?: number | null } };
   items?: ReaderOutlineItem[];
 }
 
@@ -48,24 +63,37 @@ function tokensOf(pages: Page[], start: number, end: number): number {
 }
 
 /**
- * Builds nodes from a list of (title, start page) entries: each entry ends
- * where the next one at the same or a higher level begins.
+ * Builds the tree from entries of any depth: each entry ends where the next
+ * one at the same or a higher level begins; children outside their parent's
+ * page range are dropped (broken bookmarks).
  */
-function fromEntries(
-  entries: { title: string; page: number; children: { title: string; page: number }[] }[],
-  pages: Page[],
-  lastPage: number,
-): OutlineNode[] {
-  const sorted = entries.filter((e) => e.page >= 1).sort((a, b) => a.page - b.page);
+function fromEntries(entries: OutlineEntry[], pages: Page[], lastPage: number, prefix = '', depth = 0): OutlineNode[] {
+  const sorted = entries
+    .filter((e) => e.page >= 1 && e.page <= lastPage)
+    .map((e, i) => ({ e, i }))
+    // Same page: keep the given order (a chapter and its first section often share the page).
+    .sort((a, b) => a.e.page - b.e.page || (a.e.top ?? 0) - (b.e.top ?? 0) || a.i - b.i)
+    .map((x) => x.e);
   return sorted.map((e, i) => {
-    const end = i + 1 < sorted.length ? Math.max(e.page, sorted[i + 1].page - 1) : lastPage;
-    const kids = e.children.filter((c) => c.page >= e.page && c.page <= end).sort((a, b) => a.page - b.page);
-    const children = kids.map((c, j) => {
-      const cEnd = j + 1 < kids.length ? Math.max(c.page, kids[j + 1].page - 1) : end;
-      return { id: `${i}.${j}`, title: c.title, pageStart: c.page, pageEnd: cEnd, tokens: tokensOf(pages, c.page, cEnd), children: [] };
-    });
-    return { id: `${i}`, title: e.title, pageStart: e.page, pageEnd: end, tokens: tokensOf(pages, e.page, end), children };
+    const next = sorted[i + 1];
+    // A chapter whose successor starts lower on the same page still ends on that page.
+    const end = next ? Math.max(e.page, next.page - (next.top ? 0 : 1)) : lastPage;
+    const id = prefix ? `${prefix}.${i}` : `${i}`;
+    const kids = depth + 1 < MAX_DEPTH ? e.children.filter((c) => c.page >= e.page && c.page <= end) : [];
+    return {
+      id, title: e.title, pageStart: e.page, pageEnd: end, top: e.top ?? null, tokens: tokensOf(pages, e.page, end),
+      children: fromEntries(kids, pages, end, id, depth + 1),
+    };
   });
+}
+
+function readerEntries(items: ReaderOutlineItem[] | undefined): OutlineEntry[] {
+  return (items || []).map((it) => ({
+    title: (it.title || '').trim() || `(${UNTITLED})`,
+    page: (it.location?.position?.pageIndex ?? -1) + 1,
+    top: typeof it.location?.position?.top === 'number' ? it.location.position.top : null,
+    children: readerEntries(it.items),
+  }));
 }
 
 export function outlineFromReader(items: ReaderOutlineItem[] | null | undefined, pages: Page[]): Outline | null {
@@ -73,14 +101,7 @@ export function outlineFromReader(items: ReaderOutlineItem[] | null | undefined,
   // show the chapters instead of a single box covering the whole document.
   while (items?.length === 1 && items[0].items?.length) items = items[0].items;
   if (!items?.length) return null;
-  const page = (it: ReaderOutlineItem) => (it.location?.position?.pageIndex ?? -1) + 1;
-  const entries = items
-    .map((it) => ({
-      title: (it.title || '').trim() || `(${UNTITLED})`,
-      page: page(it),
-      children: (it.items || []).map((c) => ({ title: (c.title || '').trim() || `(${UNTITLED})`, page: page(c) })),
-    }))
-    .filter((e) => e.page >= 1);
+  const entries = readerEntries(items).filter((e) => e.page >= 1);
   if (!entries.length) return null;
   return { source: 'pdf', nodes: fromEntries(entries, pages, pages.length) };
 }
@@ -128,12 +149,13 @@ export function outlineFromHeadings(pages: Page[]): Outline | null {
     if (heading) found.push({ title: heading, page: p.pageNumber, sub: /^\d{1,2}\.\d/.test(heading) });
   }
   if (found.filter((f) => !f.sub).length < 2) return null;
-  const entries: { title: string; page: number; children: { title: string; page: number }[] }[] = [];
+  const entries: OutlineEntry[] = [];
   for (const f of found) {
-    if (!f.sub || !entries.length) entries.push({ title: f.title, page: f.page, children: [] });
-    else entries[entries.length - 1].children.push({ title: f.title, page: f.page });
+    // Headings are detected at the top of a page.
+    if (!f.sub || !entries.length) entries.push({ title: f.title, page: f.page, top: 0, children: [] });
+    else entries[entries.length - 1].children.push({ title: f.title, page: f.page, top: 0, children: [] });
   }
-  if (entries[0].page > 1) entries.unshift({ title: 'Front matter', page: 1, children: [] });
+  if (entries[0].page > 1) entries.unshift({ title: 'Front matter', page: 1, top: 0, children: [] });
   return { source: 'headings', nodes: fromEntries(entries, pages, pages.length) };
 }
 
@@ -141,7 +163,7 @@ export function outlineFromBlocks(pages: Page[], blockSize = 20): Outline {
   const nodes: OutlineNode[] = [];
   for (let start = 1, i = 0; start <= pages.length; start += blockSize, i++) {
     const end = Math.min(pages.length, start + blockSize - 1);
-    nodes.push({ id: `${i}`, title: `Pages ${start}–${end}`, pageStart: start, pageEnd: end, tokens: tokensOf(pages, start, end), children: [] });
+    nodes.push({ id: `${i}`, title: `Pages ${start}–${end}`, pageStart: start, pageEnd: end, top: 0, tokens: tokensOf(pages, start, end), children: [] });
   }
   return { source: 'blocks', nodes };
 }
@@ -180,10 +202,10 @@ export function outlineFromToc(
     })
     .filter((e) => Number.isFinite(e.page) && e.page > lastToc && e.page <= pages.length);
   if (mapped.filter((e) => !e.sub).length < 2) return null;
-  const top: { title: string; page: number; children: { title: string; page: number }[] }[] = [];
+  const top: OutlineEntry[] = [];
   for (const e of mapped) {
     if (!e.sub || !top.length) top.push({ title: e.title, page: e.page, children: [] });
-    else top[top.length - 1].children.push({ title: e.title, page: e.page });
+    else top[top.length - 1].children.push({ title: e.title, page: e.page, children: [] });
   }
   return { source: 'toc', nodes: fromEntries(top, pages, pages.length) };
 }
@@ -198,12 +220,26 @@ export function buildOutline(
     || outlineFromBlocks(pages);
 }
 
+export interface OutlineRow {
+  id: string;
+  parent: string;
+  title: string;
+  pageStart: number;
+  pageEnd: number;
+  depth: number;
+  /** Offset in the cleaned text and how it was found (see chapters.ts); null for page blocks. */
+  charStart: number | null;
+  how: string | null;
+}
+
 /** Flat rows for the outline table; parent '' for top-level nodes. */
-export function flattenOutline(outline: Outline): { id: string; parent: string; title: string; pageStart: number; pageEnd: number; depth: number }[] {
-  const out: { id: string; parent: string; title: string; pageStart: number; pageEnd: number; depth: number }[] = [];
+export function flattenOutline(outline: Outline, starts: ChapterStart[] = []): OutlineRow[] {
+  const byId = new Map(starts.map((s) => [s.nodeId, s]));
+  const out: OutlineRow[] = [];
   const walk = (nodes: OutlineNode[], parent: string, depth: number) => {
     for (const n of nodes) {
-      out.push({ id: n.id, parent, title: n.title, pageStart: n.pageStart, pageEnd: n.pageEnd, depth });
+      const st = byId.get(n.id);
+      out.push({ id: n.id, parent, title: n.title, pageStart: n.pageStart, pageEnd: n.pageEnd, depth, charStart: st?.charStart ?? null, how: st?.how ?? null });
       walk(n.children, n.id, depth + 1);
     }
   };

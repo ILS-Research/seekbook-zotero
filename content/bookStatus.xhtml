@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<!DOCTYPE window>
+<window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        xmlns:html="http://www.w3.org/1999/xhtml"
+        id="seekbook-status-window"
+        title="SeekBook"
+        width="560" height="420"
+        persist="width height screenX screenY"
+        onload="Zotero.SeekBook?.onStatusWindowLoad(window)">
+<html:style>
+  html, body, window { background: var(--material-background, Field); color: var(--fill-primary, FieldText); }
+  #seekbook-status-body { flex: 1; overflow: auto; margin: 12px; font: -moz-dialog; font-size: 13px; white-space: pre-wrap; user-select: text; }
+  #seekbook-status-body .title { font-weight: 600; font-size: 14px; }
+  #seekbook-status-body .headline { margin: 6px 0 10px; }
+  #seekbook-status-body li { margin: 3px 0; }
+  #seekbook-status-body progress { width: 220px; vertical-align: middle; margin-left: 6px; }
+  .seekbook-status-buttons { display: flex; justify-content: flex-end; gap: 8px; margin: 0 12px 12px; }
+  #seekbook-status-updated { flex: 1; font-size: 11px; opacity: .7; align-self: center; }
+</html:style>
+<script src="chrome://zotero/content/include.js"/>
+<html:div id="seekbook-status-body"></html:div>
+<html:div class="seekbook-status-buttons">
+  <html:span id="seekbook-status-updated"></html:span>
+  <html:button id="seekbook-status-reindex">Reindex</html:button>
+  <html:button id="seekbook-status-close">Close</html:button>
+</html:div>
+</window>
