@@ -38,6 +38,20 @@ export function isLoopbackHost(hostname: string): boolean {
   return LOOPBACK.has(hostname);
 }
 
+/**
+ * An API key only travels over https to other computers (plain http would send it
+ * and the book text readable to everyone on the way). Loopback stays allowed: it
+ * never leaves this computer.
+ */
+export function assertSecureTransport(u: URL, apiKey: string): void {
+  if (apiKey && u.protocol === 'http:' && !isLoopbackHost(u.hostname)) {
+    throw new HostRejectedError(
+      `An API key is set, so '${u.hostname}' must be reached over https:// ` +
+      `(for a self-signed certificate tick "Accept invalid certificate" in the SeekBook settings).`
+    );
+  }
+}
+
 /** Validates a request URL against loopback plus the allowed remote hosts. */
 export function assertAllowedUrl(raw: string, allowedRemoteHosts: string[]): URL {
   let u: URL;

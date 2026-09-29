@@ -1,0 +1,2 @@
+Self-signed certificate for the E2E mock embedding server (https on 127.0.0.1:11435).
+Test-only key, never used outside the E2E container; not trusted anywhere on purpose.

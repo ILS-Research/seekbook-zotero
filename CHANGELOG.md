@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0 – 2026-09-29
+- **API key only over https**: with an API key, a server on another computer must be reached over `https://`;
+  plain `http://` is refused before anything is sent (the key and the book text would travel readable). Loopback
+  (`127.0.0.1`, `localhost`, `[::1]`) stays allowed over http.
+- **Accept invalid certificate** (new setting): for an https server with a self-signed, expired or mismatching
+  certificate SeekBook adds a certificate exception for that host and port until Zotero restarts; switching the
+  setting off removes it. Without the setting a certificate error says where to find it.
+- **Advanced settings** section: texts per request (`batchSize`), parallel requests (`embedConcurrency`) and search
+  memory (`cacheMB`), before only in about:config. Search memory now applies with the next search (before: only
+  after a restart).
+- README: https/certificate, advanced settings, "rebuild needed".
+
 ## 0.3.7 – 2026-09-29
 Fixes from the code review, M2 and M6:
 - Searches run one after another in the scan pool. Two searches at the same time over scopes larger than the memory

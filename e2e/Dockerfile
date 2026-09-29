@@ -20,6 +20,7 @@ RUN update-ca-certificates
 ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 
 COPY make-pdf.mjs mock-embed.mjs run-in-container.sh /e2e/
+COPY tls/ /e2e/tls/
 RUN node /e2e/make-pdf.mjs /fixtures && chmod +x /e2e/run-in-container.sh
 
 ENTRYPOINT ["/e2e/run-in-container.sh"]

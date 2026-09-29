@@ -3,7 +3,8 @@
  * OpenAI-compatible server (POST /v1/embeddings). Every request passes the
  * host guard and is sent with redirect: 'error'.
  */
-import { assertAllowedUrl, parseAllowedHosts } from '../host-guard';
+import { assertAllowedUrl, assertSecureTransport, parseAllowedHosts } from '../host-guard';
+import { prepareTls } from '../tls';
 import type { SeekBookPrefs } from '../../prefs';
 import { getFetch, newAbortController } from '../../util/env';
 
@@ -14,7 +15,15 @@ export class EmbeddingError extends Error {
   }
 }
 
-export type EmbeddingConfig = Pick<SeekBookPrefs, 'provider' | 'baseUrl' | 'apiKey' | 'model' | 'allowedRemoteHosts'>;
+export type EmbeddingConfig = Pick<SeekBookPrefs, 'provider' | 'baseUrl' | 'apiKey' | 'model' | 'allowedRemoteHosts'>
+  & Partial<Pick<SeekBookPrefs, 'allowInvalidCerts'>>;
+
+/** Host guard, https for API keys, certificate exception: everything before a request to the server. */
+async function checkedUrl(cfg: Omit<EmbeddingConfig, 'model'>, url: string): Promise<void> {
+  const u = assertAllowedUrl(url, parseAllowedHosts(cfg.allowedRemoteHosts));
+  assertSecureTransport(u, cfg.apiKey);
+  if (typeof Zotero !== 'undefined') await prepareTls(u, !!cfg.allowInvalidCerts);
+}
 
 export function embedUrl(cfg: EmbeddingConfig): string {
   const base = cfg.baseUrl.replace(/\/+$/, '');
@@ -85,7 +94,8 @@ async function post(url: string, init: Record<string, unknown>, timeoutMs: numbe
       if (signal?.aborted) throw e;
       if (timedOut) throw new EmbeddingError(`embedding server: no answer within ${Math.round(timeoutMs / 1000)} s`, true);
       // fetch rejects with a TypeError for DNS, refused connections, TLS and CORS problems.
-      throw new EmbeddingError(`embedding server not reachable: ${e?.message || e}`, true);
+      const hint = url.startsWith('https:') ? ' (invalid certificate? see "Accept invalid certificate" in the settings)' : '';
+      throw new EmbeddingError(`embedding server not reachable: ${e?.message || e}${hint}`, true);
     }
     if (!resp.ok) {
       const text = (await resp.text().catch(() => '')).slice(0, 300);
@@ -109,7 +119,7 @@ export async function embed(cfg: EmbeddingConfig, input: string[], opts: EmbedOp
   if (!input.length) return [];
   if (!cfg.model) throw new EmbeddingError('No embedding model set (Settings → SeekBook)');
   const url = embedUrl(cfg);
-  assertAllowedUrl(url, parseAllowedHosts(cfg.allowedRemoteHosts));
+  await checkedUrl(cfg, url);
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`;
   const retries = opts.retries ?? 3;
@@ -158,7 +168,7 @@ export function parseModelList(json: any): string[] {
 export async function listModels(cfg: Omit<EmbeddingConfig, 'model'>): Promise<string[]> {
   const base = cfg.baseUrl.replace(/\/+$/, '');
   const url = cfg.provider === 'openai' ? `${base}/models` : `${base}/api/tags`;
-  assertAllowedUrl(url, parseAllowedHosts(cfg.allowedRemoteHosts));
+  await checkedUrl(cfg, url);
   const headers: Record<string, string> = {};
   if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`;
   const resp = await getFetch()(url, { method: 'GET', headers, redirect: 'error' });

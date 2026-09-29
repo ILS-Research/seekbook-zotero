@@ -26,3 +26,14 @@ test('host list parsing normalizes entries', () => {
   assert.deepEqual(parseAllowedHosts(' https://Ollama.ILS.local:443/x, gpu01:11434 gpu01,, '), ['ollama.ils.local', 'gpu01']);
   assert.deepEqual(parseAllowedHosts(undefined), []);
 });
+
+test('an API key needs https, except on this computer', async () => {
+  const { assertSecureTransport } = await import('../src/core/host-guard');
+  const u = (s: string) => new URL(s);
+  assert.throws(() => assertSecureTransport(u('http://ollama.example.local:11434'), 'secret'), { code: 'HOST_REJECTED' });
+  assert.doesNotThrow(() => assertSecureTransport(u('https://ollama.example.local'), 'secret'));
+  assert.doesNotThrow(() => assertSecureTransport(u('http://ollama.example.local:11434'), ''));
+  for (const local of ['http://127.0.0.1:11434', 'http://localhost:8000', 'http://[::1]:11434']) {
+    assert.doesNotThrow(() => assertSecureTransport(u(local), 'secret'), local);
+  }
+});

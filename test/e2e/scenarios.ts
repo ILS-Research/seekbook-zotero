@@ -351,6 +351,43 @@ export const scenarios: Scenario[] = [
     assert(local[0] === 404, `loopback Host: ${JSON.stringify(local)}`);
   }],
 
+  ['https: API key needs https; invalid certificate only with the setting; advanced settings apply', async () => {
+    const { embed } = await import('../../src/core/embed/client');
+    const { readPrefs } = await import('../../src/prefs');
+    const cfg = () => ({ ...readPrefs(), apiKey: 'secret' });
+    try {
+      // Plain http to another computer with an API key: refused before anything is sent.
+      setPref('allowedRemoteHosts', 'mock.example');
+      setPref('baseUrl', 'http://mock.example:11434');
+      let err: any = null;
+      try { await embed(cfg(), ['x'], { retries: 0 }); } catch (e) { err = e; }
+      assert(err?.code === 'HOST_REJECTED' && /https/.test(err.message), `http + key: ${err}`);
+      // Loopback http with a key stays allowed.
+      setPref('baseUrl', MOCK);
+      assert((await embed(cfg(), ['x'], { retries: 0 }))[0].length > 0, 'loopback http with key');
+      // Self-signed https: refused without the setting, works with it.
+      setPref('baseUrl', 'https://127.0.0.1:11435');
+      err = null;
+      try { await embed(cfg(), ['x'], { retries: 0 }); } catch (e) { err = e; }
+      assert(err && /not reachable/.test(err.message) && /invalid certificate/.test(err.message), `self-signed without setting: ${err}`);
+      setPref('allowInvalidCerts', true);
+      const [v] = await embed(cfg(), ['Waermeinseln'], { retries: 0 });
+      assert(v.length > 0, 'self-signed with setting');
+    } finally {
+      setPref('allowInvalidCerts', false);
+      setPref('allowedRemoteHosts', '');
+      setPref('baseUrl', MOCK);
+    }
+    // Advanced: search memory applies with the next search, without a restart.
+    setPref('cacheMB', 128);
+    try {
+      await api(PATHS.search, { q: 'Waermeinseln', mode: 'semantic' });
+      assert(scanPool.stats().limit === 128 * 1024 * 1024, `limit ${scanPool.stats().limit}`);
+    } finally {
+      setPref('cacheMB', 1024);
+    }
+  }],
+
   ['REST access can be switched off', async () => {
     setPref('apiEnabled', false);
     plugin().applyApiPref();
@@ -388,6 +425,17 @@ export const scenarios: Scenario[] = [
       const options = Array.from(prefsWin.document.getElementById('seekbook-model').options).map((o: any) => o.value);
       assert(options.join() === 'mock-embed,mock-embed-32,llama3:8b', options.join());
       assert(prefsWin.document.querySelector('#seekbook-preferences .danger #seekbook-allowedRemoteHosts'), 'caution box');
+      // Advanced section and the certificate checkbox are bound to their prefs.
+      const d = prefsWin.document;
+      assert(d.querySelector('#seekbook-group-advanced #seekbook-cacheMB')?.value === '1024', 'cacheMB field');
+      assert(d.getElementById('seekbook-embedConcurrency')?.value === '2', 'embedConcurrency field');
+      assert(d.getElementById('seekbook-allowInvalidCerts')?.checked === false, 'certificate checkbox');
+      const batch = d.getElementById('seekbook-batchSize');
+      assert(batch?.value === '32', `batchSize field ${batch?.value}`);
+      batch.value = '16';
+      batch.dispatchEvent(new prefsWin.Event('change'));
+      assert(Zotero.Prefs.get('seekbook.batchSize') === 16, 'batchSize not saved');
+      setPref('batchSize', 32);
     } finally {
       prefsWin.close();
     }

@@ -20,6 +20,17 @@ const EN = {
   'prefs.noModels': 'The server lists no models.',
   'prefs.notEmbedding': '(no embedding model?)',
   'prefs.error': 'Error: {message}',
+  'prefs.allowInvalidCerts': 'Accept invalid certificate (self-signed, expired, other name)',
+  'prefs.httpsHelp': 'With an API key, a server on another computer must be reached over https://, so the key and the book ' +
+    'text are encrypted on the way. "Accept invalid certificate" adds an exception for that server until Zotero restarts; ' +
+    'the connection stays encrypted, but SeekBook no longer checks who is at the other end.',
+  'prefs.advanced': 'Advanced',
+  'prefs.batchSize': 'Texts per request',
+  'prefs.embedConcurrency': 'Parallel requests',
+  'prefs.cacheMB': 'Search memory (MB)',
+  'prefs.advancedHelp': 'Texts per request and parallel requests set the load on the embedding server while indexing ' +
+    '(apply from the next book). Search memory holds the vectors of recently searched PDFs (4096 dimensions: ' +
+    '≈ 4.5 MB per 1000 windows); applies from the next search.',
   'prefs.remoteTitle': 'Allowed remote hosts (caution)',
   'prefs.remoteHelp': 'Without an entry SeekBook only talks to a server on this computer (127.0.0.1, localhost). ' +
     'Hosts listed here (comma-separated, without http:// and port, e.g. ollama.example.local) receive the full text ' +
@@ -111,6 +122,17 @@ const DE: Record<Key, string> = {
   'prefs.noModels': 'Der Server nennt keine Modelle.',
   'prefs.notEmbedding': '(kein Embedding-Modell?)',
   'prefs.error': 'Fehler: {message}',
+  'prefs.allowInvalidCerts': 'Ungültiges Zertifikat akzeptieren (selbstsigniert, abgelaufen, anderer Name)',
+  'prefs.httpsHelp': 'Mit API-Key muss ein Server auf einem anderen Rechner per https:// angesprochen werden, damit Key und ' +
+    'Buchtext verschlüsselt übertragen werden. „Ungültiges Zertifikat akzeptieren“ legt für diesen Server eine Ausnahme ' +
+    'bis zum Neustart von Zotero an; die Verbindung bleibt verschlüsselt, aber SeekBook prüft nicht mehr, wer am anderen Ende ist.',
+  'prefs.advanced': 'Erweitert',
+  'prefs.batchSize': 'Texte pro Anfrage',
+  'prefs.embedConcurrency': 'Parallele Anfragen',
+  'prefs.cacheMB': 'Suchspeicher (MB)',
+  'prefs.advancedHelp': 'Texte pro Anfrage und parallele Anfragen bestimmen die Last auf dem Embedding-Server beim Indexieren ' +
+    '(gilt ab dem nächsten Buch). Der Suchspeicher hält die Vektoren zuletzt durchsuchter PDFs (4096 Dimensionen: ' +
+    '≈ 4,5 MB pro 1000 Fenster); gilt ab der nächsten Suche.',
   'prefs.remoteTitle': 'Erlaubte entfernte Hosts (Vorsicht)',
   'prefs.remoteHelp': 'Ohne Eintrag spricht SeekBook nur mit einem Server auf diesem Rechner (127.0.0.1, localhost). ' +
     'Hier eingetragene Hosts (kommagetrennt, ohne http:// und Port, z. B. ollama.example.local) erhalten den ' +

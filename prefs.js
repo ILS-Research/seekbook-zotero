@@ -13,6 +13,9 @@ pref("extensions.zotero.seekbook.docPrefix", "");
 // Comma-separated host names that may serve embeddings in addition to this computer.
 // Hosts listed here receive the full text of all indexed books.
 pref("extensions.zotero.seekbook.allowedRemoteHosts", "");
+// With an API key, remote servers must use https. For a self-signed or otherwise invalid certificate of such a
+// server, a certificate exception can be added for the session.
+pref("extensions.zotero.seekbook.allowInvalidCerts", false);
 // Windows: words per window and step between window starts (changing either rebuilds the index).
 pref("extensions.zotero.seekbook.chunkWords", 200);
 pref("extensions.zotero.seekbook.strideWords", 120);

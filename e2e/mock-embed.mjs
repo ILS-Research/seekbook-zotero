@@ -2,7 +2,9 @@
 // Vectors: hashed bag of words (64 dims) plus the model name's hash, so texts sharing words are
 // similar and a model change changes every vector. The dimension is 64, or 32 for models ending in "-32".
 // GET /__requests: number of embedding requests and inputs so far. POST /__fail?on=1|0 simulates an outage.
+import fs from 'node:fs';
 import http from 'node:http';
+import https from 'node:https';
 
 let requests = 0;
 let inputs = 0;
@@ -23,7 +25,7 @@ function vector(text, model) {
   return v;
 }
 
-const server = http.createServer(async (req, res) => {
+const handler = async (req, res) => {
   const json = (status, data) => {
     res.writeHead(status, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(data));
@@ -56,5 +58,10 @@ const server = http.createServer(async (req, res) => {
   }
   res.writeHead(404);
   res.end();
-});
-server.listen(11434, '127.0.0.1', () => console.log('mock embedding server on 127.0.0.1:11434'));
+};
+
+http.createServer(handler).listen(11434, '127.0.0.1', () => console.log('mock embedding server on 127.0.0.1:11434'));
+// Same API over https with a self-signed certificate (e2e/tls), for the "accept invalid certificate" setting.
+https.createServer({ key: fs.readFileSync('/e2e/tls/selfsigned.key'), cert: fs.readFileSync('/e2e/tls/selfsigned.crt') }, handler)
+  .listen(11435, '127.0.0.1', () => console.log('mock embedding server (self-signed https) on 127.0.0.1:11435'));
+

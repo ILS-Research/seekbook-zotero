@@ -21,7 +21,7 @@ export interface PaneBackend {
 }
 
 const TEXT_PREFS = ['baseUrl', 'apiKey', 'excludeTag', 'libraries', 'docPrefix'];
-const INT_PREFS = ['chunkWords', 'strideWords'];
+const INT_PREFS = ['chunkWords', 'strideWords', 'batchSize', 'embedConcurrency', 'cacheMB'];
 
 export function onPrefsLoad(win: Window, backend: PaneBackend): void {
   const doc = win.document;
@@ -57,7 +57,7 @@ export function onPrefsLoad(win: Window, backend: PaneBackend): void {
       if (Number.isFinite(v)) setPref(key, v);
     });
   }
-  for (const key of ['autoIndex', 'apiEnabled']) {
+  for (const key of ['autoIndex', 'apiEnabled', 'allowInvalidCerts']) {
     const box = $<HTMLInputElement>(key);
     if (!box) continue;
     box.checked = !!getPref(key);

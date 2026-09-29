@@ -10,6 +10,8 @@ export interface SeekBookPrefs {
   queryPrefix: string;
   docPrefix: string;
   allowedRemoteHosts: string;
+  /** https servers with an invalid (e.g. self-signed) certificate are accepted. */
+  allowInvalidCerts: boolean;
   chunkWords: number;
   strideWords: number;
   batchSize: number;
@@ -63,6 +65,7 @@ export function readPrefs(): SeekBookPrefs {
     queryPrefix: typeof getPref('queryPrefix') === 'string' ? getPref('queryPrefix') : '',
     docPrefix: typeof getPref('docPrefix') === 'string' ? getPref('docPrefix') : '',
     allowedRemoteHosts: str('allowedRemoteHosts'),
+    allowInvalidCerts: bool('allowInvalidCerts', false),
     chunkWords,
     strideWords: Math.min(chunkWords, int('strideWords', 120, 10, 2000)),
     batchSize: int('batchSize', 32, 1, 256),

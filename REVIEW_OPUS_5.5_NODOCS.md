@@ -7,7 +7,7 @@
 - **Nicht gelesen:** `test/**`, `e2e/**`
 - **Tests:** nicht ausgeführt. Das Node auf dem Host ist zu alt; der Build läuft in Docker über `build.sh`.
 
-> **Status:** H1–H5 behoben in v0.3.4; M1, M3, M4, M5, M7–M10 in v0.3.5. H6 in v0.3.6; M2, M6 in v0.3.7. Offen: die Niedrig-Punkte.
+> **Status:** H1–H5 behoben in v0.3.4; M1, M3, M4, M5, M7–M10 in v0.3.5. H6 in v0.3.6; M2, M6 in v0.3.7. https/API-Key und Erweitert-Einstellungen in v0.4.0. Offen: die übrigen Niedrig-Punkte.
 
 ## Gesamteindruck
 
@@ -154,8 +154,8 @@ Das korrigiert sich erst beim nächsten Sync. Mit `autoIndex=false` passiert das
 - Bei `clean.ts` und `outline.ts` habe ich sonst nichts Auffälliges gefunden. Die Heuristiken sind nachvollziehbar dokumentiert.
 
 ### Sicherheit und Einstellungen
-- Ein erlaubter Remote-Host darf auch über `http:` angesprochen werden. Dann gehen API-Key und Buchtext im Klartext über das Netz. Es gibt nur einen Hilfetext dazu, keine technische Warnung.
-- `cacheMB`, `batchSize` und `embedConcurrency` lassen sich nur über about:config ändern. `cacheMB` wird außerdem nur beim Start übernommen (`setLimitMB` in `startup`).
+- ~~Ein erlaubter Remote-Host darf auch über `http:` angesprochen werden. Dann gehen API-Key und Buchtext im Klartext über das Netz. Es gibt nur einen Hilfetext dazu, keine technische Warnung.~~ ✅ 0.4.0: Mit API-Key ist zu entfernten Hosts `https:` Pflicht; Option „Ungültiges Zertifikat akzeptieren“.
+- ~~`cacheMB`, `batchSize` und `embedConcurrency` lassen sich nur über about:config ändern. `cacheMB` wird außerdem nur beim Start übernommen (`setLimitMB` in `startup`).~~ ✅ 0.4.0: Abschnitt „Erweitert“ in den Einstellungen, `cacheMB` gilt ab der nächsten Suche.
 - [client.ts:25](src/core/embed/client.ts#L25): Der Kommentar sagt „no truncation … is better“, der Code setzt aber `truncate: true`.
 
 ### Toter Code

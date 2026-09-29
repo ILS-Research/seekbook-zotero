@@ -86,6 +86,8 @@
     <html:input id="seekbook-baseUrl" type="text"/>
     <html:label for="seekbook-apiKey" data-i18n="prefs.apiKey">API key</html:label>
     <html:input id="seekbook-apiKey" type="password"/>
+    <html:span></html:span>
+    <html:label><html:input id="seekbook-allowInvalidCerts" type="checkbox"/> <html:span data-i18n="prefs.allowInvalidCerts">Accept invalid certificate</html:span></html:label>
     <html:label for="seekbook-model" data-i18n="prefs.model">Model</html:label>
     <html:select id="seekbook-model"/>
     <html:label for="seekbook-queryPrefix" data-i18n="prefs.queryPrefix">Query prefix</html:label>
@@ -93,6 +95,7 @@
     <html:label for="seekbook-docPrefix" data-i18n="prefs.docPrefix">Document prefix</html:label>
     <html:input id="seekbook-docPrefix" type="text"/>
   </html:div>
+  <html:div class="help" data-i18n="prefs.httpsHelp"></html:div>
   <html:div class="buttons">
     <html:button id="seekbook-test" data-i18n="prefs.test">Test connection</html:button>
     <html:span id="seekbook-test-status" class="help"></html:span>
@@ -134,5 +137,20 @@
   <html:label><html:input id="seekbook-apiEnabled" type="checkbox"/> <html:span data-i18n="prefs.api">REST</html:span></html:label>
 </groupbox>
 
+</html:details>
+
+<html:details class="group" id="seekbook-group-advanced">
+<html:summary data-i18n="prefs.advanced">Advanced</html:summary>
+<groupbox>
+  <html:div class="row">
+    <html:label for="seekbook-batchSize" data-i18n="prefs.batchSize">Texts per request</html:label>
+    <html:input id="seekbook-batchSize" type="number" min="1" max="256"/>
+    <html:label for="seekbook-embedConcurrency" data-i18n="prefs.embedConcurrency">Parallel requests</html:label>
+    <html:input id="seekbook-embedConcurrency" type="number" min="1" max="8"/>
+    <html:label for="seekbook-cacheMB" data-i18n="prefs.cacheMB">Search memory (MB)</html:label>
+    <html:input id="seekbook-cacheMB" type="number" min="64" max="16384"/>
+  </html:div>
+  <html:div class="help" data-i18n="prefs.advancedHelp"></html:div>
+</groupbox>
 </html:details>
 </vbox>

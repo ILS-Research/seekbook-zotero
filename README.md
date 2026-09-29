@@ -39,6 +39,10 @@ Works with Zotero 7, 8, 9 and 10 (recommended: 10). The embeddings come from a m
 1. The status at the top shows how many books are indexed and what is waiting.
 2. Choose the embedding server (Ollama or OpenAI-compatible) and a model; a server that is not on your own computer
    must be added to the **allowed remote hosts** – it receives the full text of all indexed books.
+   With an **API key**, such a server must be reached over `https://`. If it has a self-signed or otherwise invalid
+   certificate, tick **Accept invalid certificate** (an exception for that server until Zotero restarts).
+   Under **Advanced** you can set how many texts go into one request, how many requests run in parallel while
+   indexing (load on the server) and how much memory searches may keep (applies without a restart).
 3. Click **Index now**. Indexing a book takes a while; you can keep working.
 4. Keep **Access for other plugins** switched on, and Zotero’s local HTTP server (Settings → Advanced), so SeekChat
    and ZotSeek can use the index.
@@ -52,6 +56,9 @@ Works with Zotero 7, 8, 9 and 10 (recommended: 10). The embeddings come from a m
   Deleted books leave the index by themselves.
 
 ## When something goes wrong
+
+*Rebuild needed*: after changing the model, the document prefix or the window settings, indexing pauses until you
+click **Rebuild index**; until then the old index stays searchable by keyword.
 
 Zotero → **Tools → Developer → Browser Console** (or Help → Debug Output Logging), filter by `[SeekBook`.
 Indexing (pages read, embedding batches, windows written), every search (query embedding and scan, keyword part,

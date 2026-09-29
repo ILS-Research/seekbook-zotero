@@ -136,6 +136,8 @@ export async function search(store: Store, query: string, opts: SearchOptions = 
   const topK = Math.min(100, Math.max(1, opts.topK ?? 20));
   const mode = opts.mode ?? 'hybrid';
   const t0 = Date.now();
+  // Takes a changed "Search memory" setting over without a restart (evicts on the next load).
+  scanPool.setLimitMB(prefs.cacheMB);
   const docs = await scopeDocs(store, opts);
   L.info(`"${query.slice(0, 100)}" (${mode}, topK ${topK}${opts.itemKeys ? `, ${opts.itemKeys.length} books` : ''}${opts.libraryKey ? `, ${opts.libraryKey}` : ''}): ${docs.length} PDFs in scope`);
   if (!docs.length) return [];
