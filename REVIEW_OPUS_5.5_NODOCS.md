@@ -24,7 +24,7 @@ Die Schwächen liegen fast alle bei **Nebenläufigkeit und Lebenszyklus**, dazu 
 
 ## Hoch
 
-### H1 Der ganze Index wird ohne Rückfrage gelöscht
+### ~~H1 Der ganze Index wird ohne Rückfrage gelöscht~~ — ✅ behoben in 0.3.4
 [indexer.ts:129](src/core/indexer.ts#L129)
 
 `checkConfig()` ruft `clearAll()` auf, sobald sich Modell, `chunkWords`, `strideWords` oder `docPrefix` geändert haben. Aufgerufen wird es aus `flushNotifications` ([index.ts:207](src/index.ts#L207)), aus `indexBooks` und aus `scan`.
@@ -37,10 +37,10 @@ Das Risiko ist höher, als es aussieht:
 
 **Vorschlag:** Nur `rebuild()` darf löschen. Bei abweichender Konfiguration pausieren alle anderen Wege und zeigen „needsRebuild“ an.
 
-### H2 `checkConfig()` greift in einen laufenden Durchlauf ein
+### ~~H2 `checkConfig()` greift in einen laufenden Durchlauf ein~~ — ✅ behoben in 0.3.4
 `rebuild()` ruft vorher `stop()` auf, `checkConfig()` tut das nicht. Wird mitten im Durchlauf gelöscht, schreibt `processBook` mit seinen alten `docPk`s weiter. `writeDocument` legt dann Zeilen in `chunks`, `terms`, `pages` und `doc_vectors` für Dokumente an, die es nicht mehr gibt. Das abschließende `UPDATE documents` trifft keine Zeile. Die verwaisten Daten werden nie aufgeräumt.
 
-### H3 Suche mit dem falschen Modell
+### ~~H3 Suche mit dem falschen Modell~~ — ✅ behoben in 0.3.4
 Nach einem Modellwechsel und vor dem Neuaufbau wird die Anfrage mit dem neuen Modell eingebettet und mit den alten Vektoren verglichen.
 
 - Unterschiedlich viele Dimensionen: Fehlermeldung aus `scanTopK`.
@@ -50,7 +50,7 @@ Nach einem Modellwechsel und vor dem Neuaufbau wird die Anfrage mit dem neuen Mo
 
 **Vorschlag:** Vor der Suche `index_config` bzw. `model_id` vergleichen und mit 503 „needs rebuild“ antworten.
 
-### H4 Der Status `failed` bleibt hängen
+### ~~H4 Der Status `failed` bleibt hängen~~ — ✅ behoben in 0.3.4
 [indexer.ts:227-236](src/core/indexer.ts#L227-L236)
 
 Ablauf:
@@ -62,7 +62,7 @@ Ablauf:
 
 **Vorschlag:** Bei „file missing“ `content_hash` leeren, oder beim Fehler eine Fehlerart mitspeichern, damit sich ein vorübergehender Fehler von einem echten unterscheiden lässt.
 
-### H5 `shutdown()` wird nicht abgewartet
+### ~~H5 `shutdown()` wird nicht abgewartet~~ — ✅ behoben in 0.3.4
 [bootstrap.js](bootstrap.js) ruft `Zotero.SeekBook?.shutdown()` ohne `await` auf und macht direkt mit `delete` und `chromeHandle.destruct()` weiter.
 
 **Folge:** Beim Update oder Deaktivieren startet die neue Version, während die alte noch einbettet und auf `seekbook.sqlite` schreibt: zwei DB-Verbindungen, zwei Indexer. H7 macht das schlimmer, weil `stop()` ohne Timeout beliebig lange hängen kann.
@@ -164,8 +164,8 @@ Das korrigiert sich erst beim nächsten Sync. Mit `autoIndex=false` passiert das
 
 ## Empfohlene Reihenfolge
 
-1. **H1, H2, H3 und H5.** Sie kosten Daten oder machen den Index inkonsistent. Ein gemeinsamer Fix ist möglich: ein Konfigurationswechsel pausiert nur noch, gelöscht wird nur über `rebuild()`, und `bootstrap.js` wartet `shutdown()` ab.
+1. ~~**H1, H2, H3 und H5.** Sie kosten Daten oder machen den Index inkonsistent. Ein gemeinsamer Fix ist möglich: ein Konfigurationswechsel pausiert nur noch, gelöscht wird nur über `rebuild()`, und `bootstrap.js` wartet `shutdown()` ab.~~ ✅ 0.3.4
 2. **H6.** Sicherheit.
 3. **M1, M2 und M3.** Hänger und Abstürze.
-4. **H4.** Kleiner Fix mit großer Wirkung für Nutzer mit synchronisierten Bibliotheken.
+4. ~~**H4.** Kleiner Fix mit großer Wirkung für Nutzer mit synchronisierten Bibliotheken.~~ ✅ 0.3.4
 5. Die übrigen Punkte nach Gelegenheit.
