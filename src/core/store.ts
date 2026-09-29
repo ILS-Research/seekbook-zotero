@@ -375,7 +375,11 @@ export class Store {
     }
   }
 
-  /** Replaces all content of a document in one transaction and marks it ready. */
+  /**
+   * Replaces all content of a document in one transaction and marks it ready,
+   * unless its file changed meanwhile (content_hash is no longer `contentHash`):
+   * then it stays queued with the new hash and is indexed again.
+   */
   async writeDocument(docPk: number, contentHash: string, modelId: string, c: DocContent): Promise<void> {
     await this.transaction(async () => {
       await this.deleteDocumentContent(docPk);
@@ -407,8 +411,8 @@ export class Store {
       }
       await this.db.queryAsync(
         `UPDATE documents SET status = 'ready', error = NULL, duplicate_of = NULL, content_hash = ?, model_id = ?,
-           pages = ?, indexed_at = ?, outline_source = ? WHERE doc_pk = ?`,
-        [contentHash, modelId, c.pageCount, Date.now(), c.outlineSource, docPk],
+           pages = ?, indexed_at = ?, outline_source = ? WHERE doc_pk = ? AND content_hash = ?`,
+        [contentHash, modelId, c.pageCount, Date.now(), c.outlineSource, docPk, contentHash],
       );
     });
   }

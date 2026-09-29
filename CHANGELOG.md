@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.5 – 2026-09-29
+Fixes from the code review, M1, M3–M5, M7–M10:
+- **Embedding requests time out** (120 s per attempt, retried) and are **aborted by Pause, Stop and shutdown**, so a
+  hanging server no longer blocks the plugin (M1).
+- Network errors, timeouts and invalid JSON from the embedding server are `EmbeddingError`s: the run stops and the
+  PDF stays queued. A `TypeError` from a bug no longer counts as "server down" (M8).
+- A crashed search worker fails the pending searches instead of hanging them; the next search starts new workers (M3).
+- "Index now" right after "Pause" starts a new run once the old one has stopped (it was lost before) (M4).
+- Unknown entries in the "Libraries" setting (typo, group left) no longer remove the books of all other libraries;
+  the settings pane shows a warning (M5).
+- When one embedding lane fails, the others stop sending batches for that PDF (M7).
+- The queue runs in passes and stops when a pass makes no progress instead of recursing forever (M9); queued PDFs of
+  a missing book are marked failed.
+- A PDF whose file changed while it was being indexed is indexed again with the new content instead of being marked
+  ready with the old hash (M10).
+
 ## 0.3.4 – 2026-09-29
 Fixes from the code review (`REVIEW_OPUS_5.5_NODOCS.md`, H1–H5):
 - **The index is no longer cleared behind the user's back.** After a change of model, document prefix or window

@@ -46,3 +46,43 @@ test('model list: embedding models first', async () => {
     ['bge-m3:latest', 'qwen3-embedding:8b', 'qwen3:8b']);
   assert.deepEqual(parseModelList({ data: [{ id: 'text-embedding-3-small' }, { id: 'gpt-4o' }] }), ['text-embedding-3-small', 'gpt-4o']);
 });
+
+/** fetch that never answers until its signal aborts (like a hanging server). */
+function hangingFetch(): typeof fetch {
+  return ((_url: string, init: any) => new Promise((_resolve, reject) => {
+    init.signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
+  })) as any;
+}
+
+test('network errors and timeouts are retryable EmbeddingErrors', async () => {
+  const orig = globalThis.fetch;
+  try {
+    let calls = 0;
+    globalThis.fetch = (async () => { calls++; throw new TypeError('NetworkError when attempting to fetch resource.'); }) as any;
+    await assert.rejects(embed(cfg, ['x'], { sleep: async () => {}, retries: 2 }),
+      (e: any) => e instanceof EmbeddingError && e.retryable && /not reachable/.test(e.message));
+    assert.equal(calls, 3);
+    globalThis.fetch = hangingFetch();
+    await assert.rejects(embed(cfg, ['x'], { sleep: async () => {}, retries: 1, timeoutMs: 20 }),
+      (e: any) => e instanceof EmbeddingError && /no answer within/.test(e.message));
+    globalThis.fetch = (async () => new Response('not json', { status: 200 })) as any;
+    await assert.rejects(embed(cfg, ['x'], { sleep: async () => {}, retries: 0 }),
+      (e: any) => e instanceof EmbeddingError && /invalid JSON/.test(e.message));
+  } finally {
+    globalThis.fetch = orig;
+  }
+});
+
+test('aborting the signal ends a hanging request at once, without retries', async () => {
+  const orig = globalThis.fetch;
+  globalThis.fetch = hangingFetch();
+  try {
+    const ctrl = new AbortController();
+    const p = embed(cfg, ['x'], { sleep: async () => {}, retries: 3, timeoutMs: 60_000, signal: ctrl.signal });
+    ctrl.abort();
+    await assert.rejects(p, { name: 'AbortError' });
+    await assert.rejects(embed(cfg, ['x'], { signal: ctrl.signal }), { name: 'AbortError' });
+  } finally {
+    globalThis.fetch = orig;
+  }
+});

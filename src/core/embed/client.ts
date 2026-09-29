@@ -5,7 +5,7 @@
  */
 import { assertAllowedUrl, parseAllowedHosts } from '../host-guard';
 import type { SeekBookPrefs } from '../../prefs';
-import { getFetch } from '../../util/env';
+import { getFetch, newAbortController } from '../../util/env';
 
 export class EmbeddingError extends Error {
   constructor(message: string, readonly retryable = false) {
@@ -51,6 +51,58 @@ export interface EmbedOptions {
   backoffMs?: number;
   signal?: AbortSignal;
   sleep?: (ms: number) => Promise<void>;
+  /** Per attempt; a server that does not answer in time counts as a retryable failure. */
+  timeoutMs?: number;
+}
+
+/** Long enough for a cold model load on a busy server, short enough that stop/shutdown do not hang. */
+export const EMBED_TIMEOUT_MS = 120_000;
+
+/** Calls `fn` after `ms`; returns a cancel function. The plugin sandbox has no setTimeout. */
+function startTimer(ms: number, fn: () => void): () => void {
+  if (typeof setTimeout === 'function') {
+    const h = setTimeout(fn, ms);
+    return () => clearTimeout(h);
+  }
+  let live = true;
+  void Zotero.Promise.delay(ms).then(() => { if (live) fn(); });
+  return () => { live = false; };
+}
+
+/** One POST with timeout; aborting `signal` aborts the request. Network trouble becomes a retryable EmbeddingError. */
+async function post(url: string, init: Record<string, unknown>, timeoutMs: number, signal?: AbortSignal): Promise<any> {
+  const ctrl = newAbortController();
+  let timedOut = false;
+  const onAbort = () => ctrl.abort();
+  if (signal?.aborted) ctrl.abort();
+  signal?.addEventListener('abort', onAbort);
+  const cancel = startTimer(timeoutMs, () => { timedOut = true; ctrl.abort(); });
+  try {
+    let resp: Response;
+    try {
+      resp = await getFetch()(url, { ...init, signal: ctrl.signal });
+    } catch (e: any) {
+      if (signal?.aborted) throw e;
+      if (timedOut) throw new EmbeddingError(`embedding server: no answer within ${Math.round(timeoutMs / 1000)} s`, true);
+      // fetch rejects with a TypeError for DNS, refused connections, TLS and CORS problems.
+      throw new EmbeddingError(`embedding server not reachable: ${e?.message || e}`, true);
+    }
+    if (!resp.ok) {
+      const text = (await resp.text().catch(() => '')).slice(0, 300);
+      // 4xx other than 408/429 will not get better by retrying.
+      const retryable = resp.status >= 500 || resp.status === 408 || resp.status === 429;
+      throw new EmbeddingError(`embedding server: HTTP ${resp.status} ${text}`, retryable);
+    }
+    try {
+      return await resp.json();
+    } catch (e: any) {
+      if (signal?.aborted) throw e;
+      throw new EmbeddingError(timedOut ? 'embedding server: answer timed out' : `embedding server: invalid JSON (${e?.message || e})`, true);
+    }
+  } finally {
+    cancel();
+    signal?.removeEventListener('abort', onAbort);
+  }
 }
 
 export async function embed(cfg: EmbeddingConfig, input: string[], opts: EmbedOptions = {}): Promise<number[][]> {
@@ -65,17 +117,11 @@ export async function embed(cfg: EmbeddingConfig, input: string[], opts: EmbedOp
   let lastError: unknown;
   for (let attempt = 0; attempt <= retries; attempt++) {
     if (attempt) await sleep((opts.backoffMs ?? 1000) * 2 ** (attempt - 1));
+    if (opts.signal?.aborted) break;
     try {
-      const resp = await getFetch()(url, {
-        method: 'POST', headers, body: JSON.stringify(embedBody(cfg, input)), redirect: 'error', signal: opts.signal,
-      });
-      if (!resp.ok) {
-        const text = (await resp.text().catch(() => '')).slice(0, 300);
-        // 4xx other than 408/429 will not get better by retrying.
-        const retryable = resp.status >= 500 || resp.status === 408 || resp.status === 429;
-        throw new EmbeddingError(`embedding server: HTTP ${resp.status} ${text}`, retryable);
-      }
-      return parseEmbedResponse(await resp.json(), input.length);
+      const json = await post(url, { method: 'POST', headers, body: JSON.stringify(embedBody(cfg, input)), redirect: 'error' },
+        opts.timeoutMs ?? EMBED_TIMEOUT_MS, opts.signal);
+      return parseEmbedResponse(json, input.length);
     } catch (e: any) {
       lastError = e;
       if (opts.signal?.aborted) throw e;
@@ -83,7 +129,14 @@ export async function embed(cfg: EmbeddingConfig, input: string[], opts: EmbedOp
       if (!retryable) throw e;
     }
   }
+  if (opts.signal?.aborted) throw abortError();
   throw lastError;
+}
+
+function abortError(): Error {
+  const e = new Error('aborted');
+  e.name = 'AbortError';
+  return e;
 }
 
 // Names of common embedding model families (Ollama lists chat and embedding models together).

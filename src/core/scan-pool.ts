@@ -53,8 +53,8 @@ export class ScanPool {
         const w = new Ctor(WORKER_URL);
         w.onmessage = (e: MessageEvent) => this.onMessage(e.data);
         w.onerror = (e: any) => {
-          logError(`search worker: ${e?.message || e}`);
           e?.preventDefault?.();
+          this.fail(`search worker: ${e?.message || e}`);
         };
         this.workers.push(w);
         this.workerBytes.push(0);
@@ -217,9 +217,18 @@ export class ScanPool {
     for (const w of this.workers) w.postMessage({ type: 'clear' });
   }
 
-  terminate(): void {
+  /**
+   * A worker died: its resident vectors are gone and it will never answer.
+   * Pending searches fail instead of waiting forever; the next search starts fresh workers.
+   */
+  private fail(message: string): void {
+    logError(message);
+    this.terminate(new Error(`${message} (search restarted)`));
+  }
+
+  terminate(reason: Error = new Error('search workers stopped')): void {
     for (const w of this.workers) w.terminate();
-    for (const p of this.pending.values()) p.reject(new Error('search workers stopped'));
+    for (const p of this.pending.values()) p.reject(reason);
     this.pending.clear();
     this.workers = [];
     this.workerBytes = [];

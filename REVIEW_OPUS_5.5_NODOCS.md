@@ -7,7 +7,7 @@
 - **Nicht gelesen:** `test/**`, `e2e/**`
 - **Tests:** nicht ausgeführt. Das Node auf dem Host ist zu alt; der Build läuft in Docker über `build.sh`.
 
-> **Status:** H1–H5 behoben in v0.3.4. H6 und alle M-/Niedrig-Punkte sind offen.
+> **Status:** H1–H5 behoben in v0.3.4; M1, M3, M4, M5, M7–M10 in v0.3.5. Offen: H6, M2, M6 und die Niedrig-Punkte.
 
 ## Gesamteindruck
 
@@ -80,7 +80,7 @@ Ablauf:
 
 ## Mittel
 
-### M1 Embedding-Anfragen haben kein Timeout und lassen sich nicht abbrechen
+### ~~M1 Embedding-Anfragen haben kein Timeout und lassen sich nicht abbrechen~~ — ✅ behoben in 0.3.5
 [client.ts:69](src/core/embed/client.ts#L69)
 
 `signal` wird unterstützt, aber der Indexer übergibt keins. Hängt der Server, hängen auch `stop()`, `pause()`, `rebuild()` und der Shutdown. `newAbortController` ([env.ts](src/util/env.ts)) ist schon vorhanden, wird aber nirgends benutzt.
@@ -95,13 +95,13 @@ Ablauf:
 
 **Vorschlag:** Suchen serialisieren oder Einträge per Referenzzähler festhalten.
 
-### M3 Ein Worker-Absturz lässt die Suche ewig hängen
+### ~~M3 Ein Worker-Absturz lässt die Suche ewig hängen~~ — ✅ behoben in 0.3.5
 `onerror` protokolliert den Fehler nur. Die offenen Promises in `pending` werden nie abgewiesen, die Anfrage an `/search` wartet ohne Ende.
 
-### M4 Pausieren und direkt danach „Jetzt indexieren“ tut nichts
+### ~~M4 Pausieren und direkt danach „Jetzt indexieren“ tut nichts~~ — ✅ behoben in 0.3.5
 `pause()` setzt `stopRequested`. Läuft der alte Durchlauf noch, gibt `run()` einfach das bestehende `runPromise` zurück, und der Durchlauf endet wie angefordert. Der neue Auftrag geht verloren.
 
-### M5 Tippfehler in `libraries` entfernt alle Bücher
+### ~~M5 Tippfehler in `libraries` entfernt alle Bücher~~ — ✅ behoben in 0.3.5
 [indexer.ts:153](src/core/indexer.ts#L153)
 
 Ungültige oder unbekannte Bibliotheksschlüssel werden stillschweigend verworfen. Bleibt dabei die Liste leer, obwohl etwas eingetragen war, entfernt `scan()` ([Z. 169](src/core/indexer.ts#L169)) jedes Buch aus dem Index. Hier sollte eine Warnung kommen oder abgebrochen werden, statt zu löschen.
@@ -110,22 +110,22 @@ Ungültige oder unbekannte Bibliotheksschlüssel werden stillschweigend verworfe
 - `stopped` wird nur in `notify` geprüft, nicht in `flushNotifications` oder `forget`. Ein Timer, der noch läuft, greift nach `store.close()` auf die DB zu.
 - Zwei Flushes können sich überlappen, weil `notifyTimer` im `finally` zurückgesetzt wird, bevor der Flush fertig ist.
 
-### M7 Ein Fehler in einer Lane stoppt die anderen nicht
+### ~~M7 Ein Fehler in einer Lane stoppt die anderen nicht~~ — ✅ behoben in 0.3.5
 [indexer.ts:462](src/core/indexer.ts#L462)
 
 Wirft eine Lane, lehnt `Promise.all` zwar ab, die übrigen Lanes schicken aber weiter Batches an den Server und rufen `emit()` auf.
 
-### M8 Jeder `TypeError` wird als Serverproblem gewertet
+### ~~M8 Jeder `TypeError` wird als Serverproblem gewertet~~ — ✅ behoben in 0.3.5
 [indexer.ts:392](src/core/indexer.ts#L392)
 
 Ein Programmierfehler lässt das PDF dann für immer in der Queue und hält jeden Durchlauf an. Mit `autoIndex` wiederholt sich das bei jeder Benachrichtigung. Besser nur die Netzwerkfehler von `fetch` gezielt erkennen.
 
-### M9 `loop()` ruft sich ohne Fortschrittsprüfung selbst auf
+### ~~M9 `loop()` ruft sich ohne Fortschrittsprüfung selbst auf~~ — ✅ behoben in 0.3.5
 [indexer.ts:336](src/core/indexer.ts#L336)
 
 Bleibt ein Dokument dauerhaft `queued`, etwa weil `processBook` bei `!book` sofort zurückkehrt, rekursiert `loop()` ohne Ende. Das ist unwahrscheinlich, aber nicht abgesichert.
 
-### M10 Laufende Änderungen an Dateien gehen verloren
+### ~~M10 Laufende Änderungen an Dateien gehen verloren~~ — ✅ behoben in 0.3.5
 Ablauf:
 1. Die Datei eines PDFs ändert sich, während es indiziert wird.
 2. `syncBook` setzt das PDF auf `queued` mit neuem Hash.
@@ -166,6 +166,6 @@ Das korrigiert sich erst beim nächsten Sync. Mit `autoIndex=false` passiert das
 
 1. ~~**H1, H2, H3 und H5.** Sie kosten Daten oder machen den Index inkonsistent. Ein gemeinsamer Fix ist möglich: ein Konfigurationswechsel pausiert nur noch, gelöscht wird nur über `rebuild()`, und `bootstrap.js` wartet `shutdown()` ab.~~ ✅ 0.3.4
 2. **H6.** Sicherheit.
-3. **M1, M2 und M3.** Hänger und Abstürze.
+3. ~~**M1** und **M3**~~ ✅ 0.3.5 · **M2** offen. Hänger und Abstürze.
 4. ~~**H4.** Kleiner Fix mit großer Wirkung für Nutzer mit synchronisierten Bibliotheken.~~ ✅ 0.3.4
 5. Die übrigen Punkte nach Gelegenheit.

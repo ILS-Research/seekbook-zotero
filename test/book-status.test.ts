@@ -7,7 +7,7 @@ const doc = (docPk: number, status: any, extra: any = {}) => ({
   docPk, bookPk: 1, attachmentKey: `K${docPk}`, attachmentTitle: `Teil ${docPk}`, fileName: '', sortOrder: docPk,
   pages: 120, contentHash: 'h', duplicateOf: null, modelId: 'm', status, error: null, indexedAt: null, outlineSource: 'pdf', ...extra,
 });
-const idle = { bookPk: null, attachmentKey: null, running: false, paused: false, book: 0, books: 0, title: '', chunk: 0, chunks: 0, lastError: null };
+const idle = { bookPk: null, attachmentKey: null, running: false, paused: false, book: 0, books: 0, title: '', chunk: 0, chunks: 0, lastError: null, warning: null };
 
 test('status of a book being indexed, with ready, duplicate and failed PDFs', () => {
   setLocale('de');

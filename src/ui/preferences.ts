@@ -11,7 +11,7 @@ export interface PaneBackend {
   /** Size of seekbook.sqlite in bytes, model of the index, time of the last indexed PDF (ms). */
   details(): Promise<{ bytes: number | null; model: string; lastIndexed: number | null }>;
   failed(): Promise<{ title: string; error: string }[]>;
-  progress(): { running: boolean; paused: boolean; book: number; books: number; title: string; chunk: number; chunks: number; lastError: string | null };
+  progress(): { running: boolean; paused: boolean; book: number; books: number; title: string; chunk: number; chunks: number; lastError: string | null; warning: string | null };
   needsRebuild(): Promise<boolean>;
   indexNow(): void;
   pause(): void;
@@ -132,6 +132,7 @@ export function onPrefsLoad(win: Window, backend: PaneBackend): void {
       let line = p.running ? t('prefs.running', p as any) : p.lastError ? t('prefs.lastError', { message: p.lastError })
         : p.paused ? t('prefs.paused') : t('prefs.idle');
       if (await backend.needsRebuild()) line += ' ' + t('prefs.needsRebuild');
+      if (p.warning) line += ' ' + p.warning;
       setText('progress', line);
       const list = $('failed');
       if (list) {

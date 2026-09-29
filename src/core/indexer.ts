@@ -18,6 +18,7 @@ import {
 import { termKeys } from './text/tokenize';
 import type { Page } from './text/types';
 import { libraryIDOf, libraryKeyOf } from './zotero-items';
+import { newAbortController } from '../util/env';
 import { readPrefs, type SeekBookPrefs } from '../prefs';
 import { log, logError, logger } from '../util/log';
 
@@ -37,6 +38,8 @@ export interface Progress {
   chunk: number;
   chunks: number;
   lastError: string | null;
+  /** Settings problem that does not stop indexing (unknown libraries), null if none. */
+  warning: string | null;
 }
 
 /**
@@ -109,9 +112,13 @@ function field(item: any, name: string): string {
 }
 
 export class Indexer {
-  progress: Progress = { bookPk: null, attachmentKey: null, running: false, paused: false, book: 0, books: 0, title: '', chunk: 0, chunks: 0, lastError: null };
+  progress: Progress = { bookPk: null, attachmentKey: null, running: false, paused: false, book: 0, books: 0, title: '', chunk: 0, chunks: 0, lastError: null, warning: null };
   private runPromise: Promise<void> | null = null;
   private stopRequested = false;
+  /** Aborts the embedding requests in flight when the run is stopped. */
+  private abort: AbortController | null = null;
+  /** Documents that left the queue (ready, failed, duplicate) in the current pass. */
+  private settled = 0;
   private listeners = new Set<() => void>();
 
   constructor(private store: Store, private prefs: () => SeekBookPrefs = readPrefs) {}
@@ -155,19 +162,38 @@ export class Indexer {
   }
 
   libraryIDs(): number[] {
+    return this.libraryScope().ids;
+  }
+
+  /** Libraries to index, and entries of the `libraries` pref that match no library (typo, group left). */
+  libraryScope(): { ids: number[]; unknown: string[] } {
     const wanted = this.prefs().libraries;
     const all: number[] = Zotero.Libraries.getAll()
       .map((l: any) => l.libraryID)
       .filter((id: number) => libraryKeyOf(id));
-    if (!wanted.length) return all;
-    return wanted.map(libraryIDOf).filter((id): id is number => id !== null && all.includes(id));
+    if (!wanted.length) return { ids: all, unknown: [] };
+    const ids: number[] = [];
+    const unknown: string[] = [];
+    for (const key of wanted) {
+      const id = libraryIDOf(key);
+      if (id !== null && all.includes(id)) ids.push(id);
+      else unknown.push(key);
+    }
+    return { ids, unknown };
   }
 
   /** Brings books and documents in line with the libraries; returns the number of queued documents. */
   async scan(): Promise<number> {
     if (!(await this.checkConfig())) return 0;
+    const scope = this.libraryScope();
+    // A typo must not drop the books of every other library: they stay until the setting is fixed.
+    this.progress.warning = scope.unknown.length
+      ? `Unknown libraries in the settings: ${scope.unknown.join(', ')} – books outside the listed libraries are kept`
+      : null;
+    if (this.progress.warning) log(this.progress.warning);
+    const scanned = new Set(scope.ids.map((id) => libraryKeyOf(id)));
     const seen = new Set<number>();
-    for (const libraryID of this.libraryIDs()) {
+    for (const libraryID of scope.ids) {
       const items: any[] = await Zotero.Items.getAll(libraryID, true, false);
       for (const item of items) {
         if (!item.isRegularItem?.() || item.itemType !== 'book' || item.deleted) continue;
@@ -176,7 +202,11 @@ export class Indexer {
       }
     }
     // Books that are gone, trashed or no longer books (or whose library is not indexed any more).
-    for (const b of await this.store.books()) if (!seen.has(b.bookPk)) await this.removeBook(b.bookPk);
+    for (const b of await this.store.books()) {
+      if (seen.has(b.bookPk)) continue;
+      if (scope.unknown.length && !scanned.has(b.libraryKey)) continue;
+      await this.removeBook(b.bookPk);
+    }
     const n = (await this.store.queued()).length;
     this.emit();
     return n;
@@ -197,7 +227,9 @@ export class Indexer {
     if (!libraryKey) return null;
     const prefs = this.prefs();
     const existing = await this.store.bookByKey(libraryKey, item.key);
-    if (item.deleted || item.itemType !== 'book' || !this.libraryIDs().includes(item.libraryID)) {
+    const scope = this.libraryScope();
+    const outOfScope = !scope.ids.includes(item.libraryID) && !scope.unknown.length;
+    if (item.deleted || item.itemType !== 'book' || outOfScope) {
       if (existing) await this.removeBook(existing.bookPk);
       return null;
     }
@@ -264,8 +296,10 @@ export class Indexer {
 
   /** Starts the queue unless it runs already; resolves when it stops. */
   run(): Promise<void> {
-    if (this.runPromise) return this.runPromise;
+    // A run that is stopping (pause) ends first, then a new one starts: "Index now" right after "Pause" is not lost.
+    if (this.runPromise) return this.stopRequested ? this.runPromise.then(() => this.run()) : this.runPromise;
     this.stopRequested = false;
+    this.abort = newAbortController();
     this.progress = { ...this.progress, running: true, paused: false, lastError: null };
     this.emit();
     this.runPromise = this.loop()
@@ -314,6 +348,7 @@ export class Indexer {
 
   pause(): void {
     this.stopRequested = true;
+    this.abort?.abort();
     this.progress.paused = true;
     this.emit();
   }
@@ -321,6 +356,7 @@ export class Indexer {
   /** Waits for the current PDF to finish (or stop) without starting anything new. */
   async stop(): Promise<void> {
     this.stopRequested = true;
+    this.abort?.abort();
     await this.runPromise;
   }
 
@@ -334,27 +370,38 @@ export class Indexer {
   }
 
   private async loop(): Promise<void> {
-    const queued = await this.store.queued();
-    const books = Array.from(new Set(queued.map((d) => d.bookPk)));
-    this.progress.books = books.length;
-    for (const [i, bookPk] of books.entries()) {
-      if (this.stopRequested) return;
-      // Settings may change while running: never write vectors of another model into this index.
-      if (!(await this.checkConfig())) return;
-      this.progress.book = i + 1;
-      await this.processBook(bookPk);
-      // Let Zotero breathe between books.
-      await Zotero.Promise.delay(0);
+    // Passes over the queue until it is empty; new work may arrive while running (notifier).
+    for (;;) {
+      const queued = await this.store.queued();
+      if (!queued.length || this.stopRequested) return;
+      const books = Array.from(new Set(queued.map((d) => d.bookPk)));
+      this.progress.books = books.length;
+      this.settled = 0;
+      for (const [i, bookPk] of books.entries()) {
+        if (this.stopRequested) return;
+        // Settings may change while running: never write vectors of another model into this index.
+        if (!(await this.checkConfig())) return;
+        this.progress.book = i + 1;
+        await this.processBook(bookPk);
+        // Let Zotero breathe between books.
+        await Zotero.Promise.delay(0);
+      }
+      // A pass in which no document left the queue would repeat forever.
+      if (!this.settled) {
+        log(`queue: ${queued.length} document(s) made no progress, stopping`);
+        return;
+      }
     }
-    // New work may have arrived while running (notifier).
-    if (!this.stopRequested && (await this.store.queued()).length) await this.loop();
   }
 
   /** Reads all non-ready PDFs of a book, decides duplicates, indexes the rest. */
   async processBook(bookPk: number): Promise<void> {
     const prefs = this.prefs();
     const book = await this.store.bookByPk(bookPk);
-    if (!book) return;
+    if (!book) {
+      for (const d of await this.store.documents(bookPk)) await this.setSettled(d.docPk, 'failed', { error: 'book not found' });
+      return;
+    }
     this.progress.title = book.title;
     this.progress.bookPk = bookPk;
     this.progress.attachmentKey = null;
@@ -377,7 +424,7 @@ export class Indexer {
           text: p.windows.map((w) => w.text).join(' '), words: p.windows.reduce((s, w) => s + w.text.split(' ').length, 0),
         });
       } catch (e: any) {
-        await this.store.setStatus(d.docPk, 'failed', { error: String(e?.message || e) });
+        await this.setSettled(d.docPk, 'failed', { error: String(e?.message || e) });
       }
     }
     const dups = findDuplicates(dupInputs, prefs.preferDuplicates);
@@ -389,7 +436,7 @@ export class Indexer {
           await this.store.clearContent(d.docPk);
           scanPool.invalidate(d.docPk);
         }
-        await this.store.setStatus(d.docPk, 'duplicate', { duplicateOf: Number(dupOf), error: null });
+        await this.setSettled(d.docPk, 'duplicate', { duplicateOf: Number(dupOf), error: null });
         continue;
       }
       const p = prepared.get(d.docPk);
@@ -397,19 +444,28 @@ export class Indexer {
       try {
         await this.store.setStatus(d.docPk, 'indexing');
         await this.embedAndWrite(book.title, d, p, prefs);
+        this.settled++;
       } catch (e: any) {
-        if (this.stopRequested && e?.name === 'StopError') {
+        // Stopped (pause, shutdown): aborted requests end here; the PDF stays queued.
+        if (this.stopRequested) {
           await this.store.setStatus(d.docPk, 'queued');
           return;
         }
         // Server trouble stops the run (the PDF stays queued); a broken PDF fails alone.
-        if (e instanceof EmbeddingError || e?.code === 'HOST_REJECTED' || e instanceof TypeError) {
+        // Network errors arrive as EmbeddingError (client.ts), so a TypeError here is a bug, not the server.
+        if (e instanceof EmbeddingError || e?.code === 'HOST_REJECTED') {
           await this.store.setStatus(d.docPk, 'queued');
           throw e;
         }
-        await this.store.setStatus(d.docPk, 'failed', { error: String(e?.message || e) });
+        await this.setSettled(d.docPk, 'failed', { error: String(e?.message || e) });
       }
     }
+  }
+
+  /** A status that takes the document out of the queue (counts as progress of the pass). */
+  private async setSettled(docPk: number, status: 'failed' | 'duplicate', fields: { error?: string | null; duplicateOf?: number | null }): Promise<void> {
+    await this.store.setStatus(docPk, status, fields);
+    this.settled++;
   }
 
   private async readyDupInput(d: DocRow): Promise<DupInput> {
@@ -456,8 +512,11 @@ export class Indexer {
     const results: Float32Array[][] = new Array(batches.length);
     let next = 0;
     let done = 0;
+    // The first failing lane stops the others: no more batches for a PDF that will not be written.
+    let failed = false;
+    const signal = this.abort?.signal;
     const lane = async () => {
-      while (next < batches.length) {
+      while (next < batches.length && !failed) {
         if (this.stopRequested) {
           const err = new Error('stopped');
           err.name = 'StopError';
@@ -465,7 +524,13 @@ export class Indexer {
         }
         const b = next++;
         const batch = p.windows.slice(batches[b], batches[b] + prefs.batchSize);
-        const out = await embed(prefs, batch.map((w) => embeddingText(bookTitle, w.chapter, w.text, prefs.docPrefix)));
+        let out: number[][];
+        try {
+          out = await embed(prefs, batch.map((w) => embeddingText(bookTitle, w.chapter, w.text, prefs.docPrefix)), { signal });
+        } catch (e) {
+          failed = true;
+          throw e;
+        }
         results[b] = out.map((v) => normalize(v));
         done += out.length;
         this.progress.chunk = done;

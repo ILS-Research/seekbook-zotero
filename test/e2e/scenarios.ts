@@ -236,6 +236,63 @@ export const scenarios: Scenario[] = [
     assert(r.json.results[0]?.matchedChunk.snippet.includes('Pinatubo'), JSON.stringify(r.json).slice(0, 200));
   }],
 
+  ['pause aborts a hanging request; "Index now" right after it is not lost (M1, M4)', async (ctx) => {
+    await mock('/__delay?ms=4000', 'POST');
+    try {
+      await plugin().store.setStatus((await doc(ctx.otherPdf)).docPk, 'queued');
+      const first = plugin().indexer.run();
+      await waitFor('indexing', async () => (await statusOf(ctx.otherPdf)) === 'indexing', 10000);
+      const t0 = Date.now();
+      plugin().indexer.pause();
+      const second = plugin().indexer.run();
+      await first;
+      assert(Date.now() - t0 < 2000, `pause waited ${Date.now() - t0} ms for the server`);
+      await mock('/__delay?ms=0', 'POST');
+      await second;
+      assert((await statusOf(ctx.otherPdf)) === 'ready', `status ${await statusOf(ctx.otherPdf)}`);
+    } finally {
+      await mock('/__delay?ms=0', 'POST');
+    }
+  }],
+
+  ['file changed while being indexed ⇒ indexed again with the new content (M10)', async (ctx) => {
+    const path = await ctx.otherPdf.getFilePathAsync();
+    const oldHash = (await doc(ctx.otherPdf)).contentHash;
+    await plugin().store.setStatus((await doc(ctx.otherPdf)).docPk, 'queued');
+    await mock('/__delay?ms=1500', 'POST');
+    try {
+      const running = plugin().indexer.run();
+      await waitFor('indexing', async () => (await statusOf(ctx.otherPdf)) === 'indexing', 10000);
+      const bytes = await Zotero.getMainWindow().IOUtils.read(`${ctx.fixturesDir}/seekbook-other.pdf`);
+      await Zotero.getMainWindow().IOUtils.write(path, bytes);
+      await plugin().indexer.syncBook(ctx.other);
+      const newHash = (await doc(ctx.otherPdf)).contentHash;
+      assert(newHash !== oldHash, 'hash not updated by syncBook');
+      await mock('/__delay?ms=0', 'POST');
+      await running;
+      const d = await doc(ctx.otherPdf);
+      assert(d.status === 'ready' && d.contentHash === newHash, `status ${d.status}, hash ${d.contentHash === newHash ? 'new' : 'old'}`);
+    } finally {
+      await mock('/__delay?ms=0', 'POST');
+    }
+  }],
+
+  ['unknown library in the settings keeps the index (M5)', async () => {
+    const before = (await plugin().store.books()).length;
+    try {
+      for (const value of ['grop:1', 'user, group:999999']) {
+        setPref('libraries', value);
+        await plugin().indexer.scan();
+        assert((await plugin().store.books()).length === before, `${value}: books removed`);
+        assert(/Unknown libraries/.test(plugin().indexer.progress.warning || ''), `${value}: no warning`);
+      }
+    } finally {
+      setPref('libraries', '');
+    }
+    await plugin().indexer.scan();
+    assert(plugin().indexer.progress.warning === null, 'warning not cleared');
+  }],
+
   ['deleted attachment and trashed book are removed (notifier)', async (ctx) => {
     await ctx.ch2.eraseTx();
     await waitFor('chapter 2 row removed', async () => !(await doc(ctx.ch2)), 20000);
@@ -460,6 +517,8 @@ export const scenarios: Scenario[] = [
           return { idx: i, pageStart: 1 + (i >> 2), pageEnd: 1 + (i >> 2), charStart: i * 100, charEnd: i * 100 + 90, chapter: 'Kapitel', text,
             embedding: floatToBytes(v), embeddingQ: int8ToBytes(q), scale, terms: new Map([[`messung${i % 50}`, 1], [`fenster`, 1]]), nterms: 10 };
         });
+        // Like the indexer: the queued document carries the hash the write is checked against.
+        await store.setStatus(row.docPk, 'queued', { contentHash: `perf${d}` });
         const t0 = Date.now();
         await store.writeDocument(row.docPk, `perf${d}`, 'ollama:mock-embed-4096', { chunks, pages: [], labels: null, outline: [], outlineSource: 'blocks', pageCount: 250 });
         report.write.push(Date.now() - t0);
