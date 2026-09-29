@@ -163,6 +163,8 @@ export class Store {
   private db: any;
   /** 'hex': BLOB columns via unhex()/hex(); 'base64': TEXT columns. */
   encoding: 'hex' | 'base64' = 'hex';
+  /** "libraryKey/itemKey" of every book in the index, for synchronous checks (context menu). */
+  knownBooks = new Set<string>();
 
   /** `path`: full path or database name in the Zotero data directory. */
   async open(path: string = DB_NAME): Promise<void> {
@@ -176,6 +178,7 @@ export class Store {
       await this.setMeta('vector_encoding', encoding);
     }
     this.encoding = encoding === 'hex' ? 'hex' : 'base64';
+    this.knownBooks = new Set((await rows(this.db, 'SELECT library_key, item_key FROM books')).map((r) => `${r.library_key}/${r.item_key}`));
     log(`store open (${path}), vectors as ${encoding}`);
   }
 
@@ -248,6 +251,7 @@ export class Store {
       [b.libraryKey, b.itemKey, b.title, JSON.stringify(b.authors), b.year, b.language],
     );
     const r = await rows(this.db, 'SELECT book_pk FROM books WHERE library_key = ? AND item_key = ?', [b.libraryKey, b.itemKey]);
+    this.knownBooks.add(`${b.libraryKey}/${b.itemKey}`);
     return r[0].book_pk;
   }
 
@@ -266,6 +270,8 @@ export class Store {
   }
 
   async deleteBook(bookPk: number): Promise<void> {
+    const book = await this.bookByPk(bookPk);
+    if (book) this.knownBooks.delete(`${book.libraryKey}/${book.itemKey}`);
     await this.transaction(async () => {
       for (const d of await this.documents(bookPk)) await this.deleteDocumentRows(d.docPk);
       await this.db.queryAsync('DELETE FROM books WHERE book_pk = ?', [bookPk]);
@@ -388,6 +394,12 @@ export class Store {
 
   // Lookups for search and /pages
 
+  async chunkCounts(bookPk: number): Promise<Map<number, number>> {
+    const r = await rows(this.db,
+      'SELECT c.doc_pk, COUNT(*) AS n FROM chunks c JOIN documents d ON d.doc_pk = c.doc_pk WHERE d.book_pk = ? GROUP BY c.doc_pk', [bookPk]);
+    return new Map(r.map((x) => [x.doc_pk, x.n]));
+  }
+
   async pageLabels(docPk: number): Promise<Map<number, string>> {
     const r = await rows(this.db, 'SELECT page, label FROM page_labels WHERE doc_pk = ?', [docPk]);
     return new Map(r.map((x) => [x.page, x.label]));
@@ -416,6 +428,7 @@ export class Store {
 
   /** Drops every book, document and chunk (model or window settings changed). */
   async clearAll(): Promise<void> {
+    this.knownBooks.clear();
     await this.transaction(async () => {
       for (const table of ['terms', 'chunks', 'pages', 'page_labels', 'outline', 'documents', 'books']) {
         await this.db.queryAsync(`DELETE FROM ${table}`);

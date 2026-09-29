@@ -1,6 +1,6 @@
 {
   "name": "seekbook",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "SeekBook - full-text index (semantic + keyword) for books in Zotero, served over a local REST API",
   "author": "ILS",
   "license": "MIT",

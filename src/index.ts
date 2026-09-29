@@ -9,7 +9,12 @@ import { Store } from './core/store';
 import { libraryKeyOf } from './core/zotero-items';
 import { readPrefs } from './prefs';
 import { onPrefsLoad } from './ui/preferences';
+import { addLegacyMenu, registerMenus, removeLegacyMenu, unregisterMenus } from './ui/context-menu';
+import { formatBookStatus } from './core/book-status';
+import { t } from './i18n';
 import { log, logError } from './util/log';
+
+const FTL = 'seekbook-main.ftl';
 
 /** Delay before changed books are picked up (a new attachment brings several notifier events). */
 const NOTIFY_DELAY_MS = 5000;
@@ -30,6 +35,12 @@ class SeekBookPlugin {
     this.stopped = false;
     await this.store.open();
     this.applyApiPref();
+    registerMenus(info.id, `${info.rootURI}content/icons/seekbook.svg`, {
+      isKnown: (item) => this.store.knownBooks.has(`${libraryKeyOf(item.libraryID)}/${item.key}`),
+      index: async (items, force) => { await this.indexer.indexBooks(items, force); },
+      showStatus: (item) => this.showBookStatus(item),
+    });
+    for (const win of Zotero.getMainWindows()) this.onMainWindowLoad(win);
     this.observerID = Zotero.Notifier.registerObserver({ notify: this.notify }, ['item'], 'seekbook');
     try {
       this.paneID = await Zotero.PreferencePanes.register({
@@ -53,9 +64,53 @@ class SeekBookPlugin {
     if (this.paneID) Zotero.PreferencePanes.unregister?.(this.paneID);
     this.paneID = null;
     unregisterEndpoints();
+    unregisterMenus();
+    for (const win of Zotero.getMainWindows()) this.onMainWindowUnload(win);
     await this.indexer.stop();
     vectorCache.invalidate();
     await this.store.close();
+  }
+
+  onMainWindowLoad(win: any): void {
+    try {
+      win.MozXULElement?.insertFTLIfNeeded(FTL);
+      addLegacyMenu(win);
+    } catch (e) {
+      logError(e);
+    }
+  }
+
+  onMainWindowUnload(win: any): void {
+    removeLegacyMenu(win);
+    win.document.querySelector(`link[href="${FTL}"]`)?.remove();
+  }
+
+  /** Status text of one book (context menu "Indexstatus"). */
+  async bookStatusText(item: any): Promise<string> {
+    const lib = libraryKeyOf(item.libraryID);
+    const book = lib ? await this.store.bookByKey(lib, item.key) : null;
+    const docs = book ? await this.store.documents(book.bookPk) : null;
+    let booksAhead = 0;
+    if (book) {
+      const queuedBooks = Array.from(new Set((await this.store.queued()).map((d) => d.bookPk)));
+      const current = this.indexer.progress.bookPk;
+      booksAhead = queuedBooks.filter((pk) => pk < book.bookPk && pk !== current).length;
+    }
+    const tag = readPrefs().excludeTag;
+    return formatBookStatus({
+      title: String(item.getField?.('title') || ''),
+      docs,
+      chunks: book ? await this.store.chunkCounts(book.bookPk) : new Map(),
+      progress: this.indexer.progress,
+      bookPk: book?.bookPk ?? null,
+      booksAhead,
+      excludedTag: !!tag && (item.getTags?.() || []).some((x: any) => x.tag === tag),
+      notABook: item.itemType !== 'book',
+    });
+  }
+
+  async showBookStatus(item: any): Promise<void> {
+    Services.prompt.alert(Zotero.getMainWindow(), t('status.dialogTitle'), await this.bookStatusText(item));
   }
 
   applyApiPref(): void {

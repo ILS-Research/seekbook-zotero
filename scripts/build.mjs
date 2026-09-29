@@ -15,7 +15,7 @@ const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
 fs.rmSync(buildDir, { recursive: true, force: true });
 fs.mkdirSync(buildDir, { recursive: true });
 
-for (const dir of ['content']) {
+for (const dir of ['content', 'locale']) {
   fs.cpSync(path.join(root, dir), path.join(buildDir, dir), { recursive: true });
 }
 for (const file of ['bootstrap.js', 'prefs.js']) {

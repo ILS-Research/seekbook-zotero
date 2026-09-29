@@ -22,6 +22,9 @@ import { readPrefs, type SeekBookPrefs } from '../prefs';
 import { log, logError } from '../util/log';
 
 export interface Progress {
+  /** book_pk and attachment key being worked on, null when idle. */
+  bookPk: number | null;
+  attachmentKey: string | null;
   running: boolean;
   paused: boolean;
   /** Book x of n in this run. */
@@ -93,7 +96,7 @@ function field(item: any, name: string): string {
 }
 
 export class Indexer {
-  progress: Progress = { running: false, paused: false, book: 0, books: 0, title: '', chunk: 0, chunks: 0, lastError: null };
+  progress: Progress = { bookPk: null, attachmentKey: null, running: false, paused: false, book: 0, books: 0, title: '', chunk: 0, chunks: 0, lastError: null };
   private runPromise: Promise<void> | null = null;
   private stopRequested = false;
   private listeners = new Set<() => void>();
@@ -252,6 +255,8 @@ export class Indexer {
         this.runPromise = null;
         this.progress.running = false;
         this.progress.title = '';
+        this.progress.bookPk = null;
+        this.progress.attachmentKey = null;
         this.emit();
       });
     return this.runPromise;
@@ -261,6 +266,28 @@ export class Indexer {
   async indexNow(): Promise<void> {
     await this.scan();
     await this.run();
+  }
+
+  /**
+   * Context menu: adds books to the index (also without automatic indexing) or,
+   * with `force`, indexes all their PDFs again (also failed ones), then runs the queue.
+   * Returns the number of books that are in the index afterwards.
+   */
+  async indexBooks(items: any[], force: boolean): Promise<number> {
+    await this.checkConfig();
+    let n = 0;
+    for (const item of items) {
+      const bookPk = await this.syncBook(item);
+      if (bookPk === null) continue;
+      n++;
+      if (!force) continue;
+      for (const d of await this.store.documents(bookPk)) {
+        if (['ready', 'failed', 'duplicate'].includes(d.status)) await this.store.setStatus(d.docPk, 'queued', { error: null });
+      }
+    }
+    if (n) void this.run();
+    this.emit();
+    return n;
   }
 
   pause(): void {
@@ -304,6 +331,8 @@ export class Indexer {
     const book = await this.store.bookByPk(bookPk);
     if (!book) return;
     this.progress.title = book.title;
+    this.progress.bookPk = bookPk;
+    this.progress.attachmentKey = null;
     this.emit();
     const docs = (await this.store.documents(bookPk)).filter((d) => ['queued', 'indexing', 'ready', 'duplicate'].includes(d.status));
     const multi = docs.length > 1;
@@ -390,6 +419,7 @@ export class Indexer {
 
   private async embedAndWrite(bookTitle: string, d: DocRow, p: PreparedDocument & { labels: (string | null)[] | null }, prefs: SeekBookPrefs): Promise<void> {
     const vectors: Float32Array[] = [];
+    this.progress.attachmentKey = d.attachmentKey;
     this.progress.chunk = 0;
     this.progress.chunks = p.windows.length;
     this.emit();

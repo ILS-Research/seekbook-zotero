@@ -11,6 +11,8 @@ async function startup({ id, version, rootURI }) {
   const manifestURI = Services.io.newURI(rootURI + "manifest.json");
   chromeHandle = aomStartup.registerChrome(manifestURI, [
     ["content", "seekbook", rootURI + "content/"],
+    ["locale", "seekbook", "en-US", rootURI + "locale/en-US/"],
+    ["locale", "seekbook", "de", rootURI + "locale/de/"],
   ]);
 
   const ctx = { rootURI, Zotero };
@@ -22,6 +24,14 @@ async function startup({ id, version, rootURI }) {
     Zotero.debug("[SeekBook] startup failed: " + e);
     Zotero.logError(e);
   }
+}
+
+function onMainWindowLoad({ window }) {
+  Zotero.SeekBook?.onMainWindowLoad(window);
+}
+
+function onMainWindowUnload({ window }) {
+  Zotero.SeekBook?.onMainWindowUnload(window);
 }
 
 function shutdown(data, reason) {

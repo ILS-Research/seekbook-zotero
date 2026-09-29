@@ -8,6 +8,7 @@ import { PATHS } from '../../src/core/rest';
 import { readPdfStructure } from '../../src/core/text/pdf-outline';
 import { prepareDocument } from '../../src/core/text/prepare';
 import { setPref } from '../../src/prefs';
+import { menuState, onAdd, onReindex } from '../../src/ui/context-menu';
 import { parseSearchResponse } from '../fixtures/seekchat-parse';
 import { assert, waitFor, type E2EContext } from './harness';
 
@@ -316,5 +317,39 @@ export const scenarios: Scenario[] = [
       await book.eraseTx();
     }
     await writeReport(ctx, 'assets-report.json', report);
+  }],
+
+  ['context menu: add a book, reindex it, show its status', async (ctx) => {
+    const win = Zotero.getMainWindow();
+    const book = await newItem('book', 'Buch aus dem Kontextmenü');
+    const pdf = await attach(ctx, book, 'seekbook-other.pdf', 'Menü-PDF');
+    win.Zotero_Tabs.select('zotero-pane');
+    await win.ZoteroPane.collectionsView.selectLibrary(Zotero.Libraries.userLibraryID);
+    await win.ZoteroPane.selectItems([book.id]);
+    assert((Zotero as any).MenuManager, 'MenuManager missing in Zotero 10');
+    const popup = win.document.getElementById('zotero-itemmenu');
+    popup.openPopup(null, 'overlap', 0, 0, true, false);
+    const add = await waitFor('add entry', () => popup.querySelector('[data-l10n-id="seekbook-menu-add"]'), 5000);
+    assert(!add.hidden, 'add entry hidden for a new book');
+    assert(popup.querySelector('[data-l10n-id="seekbook-menu-reindex"]')?.hidden, 'reindex shown for a new book');
+    assert(!popup.querySelector('[data-l10n-id="seekbook-menu-info"]')?.hidden, 'info entry hidden');
+    popup.hidePopup();
+    assert(/nicht im Index/i.test(await plugin().bookStatusText(book)), await plugin().bookStatusText(book));
+
+    // Automatic indexing is off: the menu still adds the book.
+    await onAdd([book]);
+    await waitFor('book indexed from the menu', async () => (await statusOf(pdf)) === 'ready', 30000);
+    let state = menuState([book]);
+    assert(!state.add && state.reindex && state.info, JSON.stringify(state));
+    const text = await plugin().bookStatusText(book);
+    assert(/Menü-PDF: fertig – 4 Seiten, \d+ Fenster/.test(text), text);
+
+    const before = (await doc(pdf)).indexedAt;
+    await onReindex([book]);
+    await waitFor('book indexed again', async () => { const d = await doc(pdf); return d.status === 'ready' && d.indexedAt !== before; }, 30000);
+
+    // Articles get no entries.
+    state = menuState([ctx.article]);
+    assert(!state.add && !state.reindex && !state.info, `article: ${JSON.stringify(state)}`);
   }],
 ];

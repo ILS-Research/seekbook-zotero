@@ -35,6 +35,7 @@ The host has no usable Node. **Everything runs in Docker** via the scripts (`doc
 | `src/core/ranking.ts`, `src/core/search.ts` | BM25, RRF (k = 60), passage merging; int8 scan → float32 rescoring, vector LRU cache |
 | `src/core/rest.ts` | `/seekbook/stats`, `/seekbook/search`, `/seekbook/pages` |
 | `src/ui/preferences.ts`, `content/preferences.xhtml` | Settings pane with status and Index/Pause/Rebuild |
+| `src/ui/context-menu.ts`, `src/core/book-status.ts`, `locale/*/seekbook-main.ftl` | Item context menu for books (add, reindex, status dialog); MenuManager on Zotero 8+, DOM fallback on 7; labels via Fluent |
 | `test/*.test.ts` | Unit tests (Node runner); `test/fixtures/seekchat-parse.ts` is a copy of SeekChat's `parseSearchResponse` |
 | `test/e2e/` | Harness + scenarios in real Zotero; `e2e/mock-embed.mjs` (hashed bag-of-words vectors, `/__fail` outage switch), `e2e/make-pdf.mjs` (fixtures) |
 

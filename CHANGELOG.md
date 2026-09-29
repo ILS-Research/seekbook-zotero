@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2 – 2026-09-29
+- Context menu for books: "Add to book index" (also with automatic indexing off), "Reindex" (all PDFs of the book,
+  also failed ones) and "Book index status …" (state of each PDF, windows, chapter source, live progress, queue position).
+
 ## 0.1.1 – 2026-09-29
 - Settings: "Allowed remote hosts" as a red caution box below the server, same layout and wording as SeekChat and the ZotSeek fork.
 - Settings: model dropdown filled by "Test connection" from the server (/api/tags or /models), embedding models first, others marked; the test also embeds once and reports the dimensions.
