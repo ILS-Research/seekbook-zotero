@@ -52,6 +52,14 @@ export interface SearchResult {
   };
 }
 
+/** The index was built with another embedding model than the one set now (rebuild needed). */
+export class IndexModelError extends Error {
+  constructor(indexModel: string, currentModel: string) {
+    super(`index built with ${indexModel}, settings say ${currentModel}: rebuild the index (Settings → SeekBook)`);
+    this.name = 'IndexModelError';
+  }
+}
+
 /** Candidates from the int8 scan that get an exact float32 score. */
 export const CANDIDATES = 200;
 
@@ -63,6 +71,7 @@ interface ScopeDoc {
   attachmentKey: string;
   attachmentTitle: string;
   outlineSource: string | null;
+  modelId: string;
   bookPk: number;
   libraryKey: string;
   itemKey: string;
@@ -81,12 +90,12 @@ async function scopeDocs(store: Store, opts: SearchOptions): Promise<ScopeDoc[]>
     params.push(...opts.attachmentKeys);
   }
   const rows = await store.query(
-    `SELECT d.doc_pk, d.attachment_key, d.attachment_title, d.outline_source, b.book_pk, b.library_key, b.item_key,
+    `SELECT d.doc_pk, d.attachment_key, d.attachment_title, d.outline_source, d.model_id, b.book_pk, b.library_key, b.item_key,
        b.title, b.authors, b.year
      FROM documents d JOIN books b ON b.book_pk = d.book_pk WHERE ${where.join(' AND ')}`, params);
   return rows.map((r) => ({
     docPk: r.doc_pk, attachmentKey: r.attachment_key, attachmentTitle: r.attachment_title || '',
-    outlineSource: r.outline_source ?? null, bookPk: r.book_pk, libraryKey: r.library_key, itemKey: r.item_key,
+    outlineSource: r.outline_source ?? null, modelId: r.model_id || '', bookPk: r.book_pk, libraryKey: r.library_key, itemKey: r.item_key,
     title: r.title || '', authors: r.authors || '[]', year: r.year ?? null,
   }));
 }
@@ -131,6 +140,12 @@ export async function search(store: Store, query: string, opts: SearchOptions = 
   L.info(`"${query.slice(0, 100)}" (${mode}, topK ${topK}${opts.itemKeys ? `, ${opts.itemKeys.length} books` : ''}${opts.libraryKey ? `, ${opts.libraryKey}` : ''}): ${docs.length} PDFs in scope`);
   if (!docs.length) return [];
   const byDoc = new Map(docs.map((d) => [d.docPk, d]));
+  if (mode !== 'keyword') {
+    // Query and index vectors must come from the same model, or the scores mean nothing.
+    const current = `${prefs.provider}:${prefs.model}`;
+    const other = docs.find((d) => d.modelId !== current);
+    if (other) throw new IndexModelError(other.modelId, current);
+  }
 
   let sem = new Map<number, number>();
   let kw = new Map<number, number>();

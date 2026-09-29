@@ -39,7 +39,6 @@ export interface Progress {
   lastError: string | null;
 }
 
-/** Index configuration; a change invalidates all vectors. */
 /**
  * Version of the text preparation. Raise it when windows or chapters come out
  * differently, so existing indexes are rebuilt (2: windows stop at chapter starts).
@@ -52,6 +51,9 @@ export function indexConfig(p: SeekBookPrefs): string {
     layout: LAYOUT_VERSION,
   });
 }
+
+/** lastError while the settings do not match the index (checkConfig). */
+export const NEEDS_REBUILD = 'Model or window settings changed: rebuild the index (Settings → SeekBook)';
 
 export function modelId(p: SeekBookPrefs): string {
   return `${p.provider}:${p.model}`;
@@ -125,18 +127,26 @@ export class Indexer {
     }
   }
 
-  /** Clears everything when model or window settings changed since the index was built. */
+  /**
+   * True if the index may be extended with the current settings. An empty index
+   * takes them over; an index built with another model or other windows is never
+   * cleared here (only rebuild() does that, after the user confirmed it), so
+   * indexing stops until then.
+   */
   async checkConfig(): Promise<boolean> {
     const current = indexConfig(this.prefs());
     const stored = await this.store.getMeta('index_config');
-    if (stored === current) return false;
-    if (stored) {
-      log('index configuration changed, rebuilding');
-      await this.store.clearAll();
-      scanPool.invalidate();
+    if (stored === current) return true;
+    if (stored && Number(await this.store.valueQuery('SELECT COUNT(*) FROM documents'))) {
+      if (this.progress.lastError !== NEEDS_REBUILD) {
+        log('index configuration changed: indexing stops until the index is rebuilt');
+        this.progress.lastError = NEEDS_REBUILD;
+        this.emit();
+      }
+      return false;
     }
     await this.store.setMeta('index_config', current);
-    return !!stored;
+    return true;
   }
 
   async needsRebuild(): Promise<boolean> {
@@ -155,7 +165,7 @@ export class Indexer {
 
   /** Brings books and documents in line with the libraries; returns the number of queued documents. */
   async scan(): Promise<number> {
-    await this.checkConfig();
+    if (!(await this.checkConfig())) return 0;
     const seen = new Set<number>();
     for (const libraryID of this.libraryIDs()) {
       const items: any[] = await Zotero.Items.getAll(libraryID, true, false);
@@ -225,7 +235,8 @@ export class Indexer {
       }
       const path = await att.getFilePathAsync();
       if (!path) {
-        await this.store.setStatus(doc.docPk, 'failed', { error: 'file missing (not synced/downloaded)' });
+        // Forget the hash: when the file comes back (even unchanged) it is queued again.
+        await this.store.setStatus(doc.docPk, 'failed', { error: 'file missing (not synced/downloaded)', contentHash: '' });
         continue;
       }
       const hash = await fileHash(path);
@@ -285,7 +296,7 @@ export class Indexer {
    * Returns the number of books that are in the index afterwards.
    */
   async indexBooks(items: any[], force: boolean): Promise<number> {
-    await this.checkConfig();
+    if (!(await this.checkConfig())) return 0;
     let n = 0;
     for (const item of items) {
       const bookPk = await this.syncBook(item);
@@ -318,6 +329,7 @@ export class Indexer {
     await this.store.clearAll();
     scanPool.invalidate();
     await this.store.setMeta('index_config', indexConfig(this.prefs()));
+    this.progress.lastError = null;
     await this.indexNow();
   }
 
@@ -327,6 +339,8 @@ export class Indexer {
     this.progress.books = books.length;
     for (const [i, bookPk] of books.entries()) {
       if (this.stopRequested) return;
+      // Settings may change while running: never write vectors of another model into this index.
+      if (!(await this.checkConfig())) return;
       this.progress.book = i + 1;
       await this.processBook(bookPk);
       // Let Zotero breathe between books.

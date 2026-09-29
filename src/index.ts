@@ -21,6 +21,9 @@ const FTL = 'seekbook-main.ftl';
 /** Delay before changed books are picked up (a new attachment brings several notifier events). */
 const NOTIFY_DELAY_MS = 5000;
 
+/** How long shutdown waits for the PDF being indexed. */
+const SHUTDOWN_WAIT_MS = 30000;
+
 class SeekBookPlugin {
   readonly apiVersion = API_VERSION;
   info = { id: '', version: '', rootURI: '' };
@@ -94,7 +97,8 @@ class SeekBookPlugin {
     this.offColumn = null;
     await this.column.unregister();
     for (const win of Zotero.getMainWindows()) this.onMainWindowUnload(win);
-    await this.indexer.stop();
+    // An embedding request without answer must not block disabling/updating forever.
+    await Promise.race([this.indexer.stop(), Zotero.Promise.delay(SHUTDOWN_WAIT_MS)]);
     scanPool.terminate();
     await this.store.close();
   }
@@ -204,7 +208,8 @@ class SeekBookPlugin {
       if (known || (readPrefs().autoIndex && book.itemType === 'book')) books.set(book.id, book);
     }
     if (!books.size) return;
-    await this.indexer.checkConfig();
+    // Index built with other settings: leave it alone until the user rebuilds it.
+    if (!(await this.indexer.checkConfig())) return;
     for (const book of books.values()) await this.indexer.syncBook(book);
     void this.column.reload();
     if (readPrefs().autoIndex && (await this.store.queued()).length) void this.indexer.run();

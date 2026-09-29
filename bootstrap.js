@@ -34,13 +34,19 @@ function onMainWindowUnload({ window }) {
   Zotero.SeekBook?.onMainWindowUnload(window);
 }
 
-function shutdown(data, reason) {
+// Zotero awaits the returned promise: disable/update only continue (and a new
+// version only starts) once the indexer has stopped and the database is closed.
+async function shutdown(data, reason) {
   if (reason === APP_SHUTDOWN) {
     // Only close our database connection; Zotero is going away anyway.
-    Zotero.SeekBook?.store?.close();
+    await Zotero.SeekBook?.store?.close();
     return;
   }
-  Zotero.SeekBook?.shutdown();
+  try {
+    await Zotero.SeekBook?.shutdown();
+  } catch (e) {
+    Zotero.logError(e);
+  }
   delete Zotero.SeekBook;
   if (chromeHandle) {
     chromeHandle.destruct();

@@ -242,6 +242,10 @@ export class Store {
     return rows(this.db, sql, params);
   }
 
+  valueQuery(sql: string, params: unknown[] = []): Promise<unknown> {
+    return this.db.valueQueryAsync(sql, params);
+  }
+
   queryArrays(sql: string, params: unknown[] = []): Promise<unknown[][]> {
     return arrays(this.db, sql, params);
   }

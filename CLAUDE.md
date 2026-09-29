@@ -57,14 +57,17 @@ The host has no usable Node. **Everything runs in Docker** via the scripts (`doc
 - Bootstrap sandbox lacks `AbortController`, `TextDecoder`, sometimes `fetch`, and `setTimeout`: use `src/util/env.ts`
   and `Zotero.Promise.delay`.
 - `Zotero.Prefs.get/set(key, true)` means global (no `extensions.zotero.` prefix) — use the default.
+- **Only `Indexer.rebuild()` clears the index.** `checkConfig()` returns false when model/prefix/windows differ
+  from `meta.index_config` (non-empty index): scan, context menu, notifier and the queue then stop; search refuses
+  semantic/hybrid when `documents.model_id` differs from the current model.
 - Requests to Zotero's local server need `Zotero-Allowed-Request: 1`.
 - Page numbers are physical and 1-based **per PDF**; every search hit carries its `attachmentKey`.
-- Index config (provider, model, window sizes, doc prefix) lives in `meta.index_config`; a change clears the index
-  on the next scan (`needsRebuild` in `/seekbook/stats`).
+- Index config (provider, model, window sizes, doc prefix) lives in `meta.index_config`; a change pauses indexing
+  until "Rebuild index" (`needsRebuild` in `/seekbook/stats`).
 - Search scans run in ChromeWorkers (`chrome://seekbook/content/scripts/search-worker.js`); typed arrays are
   transferred, so a buffer is unusable on the sending side afterwards (`query.slice()` per worker).
 - Changes to windowing or chapters must raise `LAYOUT_VERSION` (indexer.ts): it is part of `index_config`, so old
-  indexes are rebuilt instead of mixing layouts.
+  indexes wait for a rebuild instead of mixing layouts.
 - Zotero's `queryAsync` wants `LIKE ?` with a bound value, and its row proxies cannot be `JSON.stringify`-ed.
 
 ## E2E
@@ -74,3 +77,7 @@ The host has no usable Node. **Everything runs in Docker** via the scripts (`doc
   `chapters-report.json` (outline offsets and window chapters of the fixture), `perf-report.json` (8 × 1000 windows at
   4096 dims: write, cold/warm search, worker vs. in-process scan, UI gaps). Timeout default 600 s.
 - The harness runs once even though a scenario restarts the plugin (`test/e2e/entry.ts`).
+
+## Code-Review
+
+- `REVIEW_OPUS_5.5_NODOCS.md` (29.09.2026): Review of v0.3.3 based on the source code only (no docs). Findings H1–H6, M1–M10 and low-priority items (H1–H5 fixed in 0.3.4); check it before larger changes to the indexer, store, scan pool or REST.

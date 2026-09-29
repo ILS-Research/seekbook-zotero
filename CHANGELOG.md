@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.4 – 2026-09-29
+Fixes from the code review (`REVIEW_OPUS_5.5_NODOCS.md`, H1–H5):
+- **The index is no longer cleared behind the user's back.** After a change of model, document prefix or window
+  settings, editing a book, "Index now" or the context menu cleared the whole index. Now indexing pauses
+  ("rebuild needed") and only "Rebuild index" (with confirmation) clears it. An empty index takes new settings over.
+- The indexer checks the settings before every book, so a change during a run no longer writes vectors of the new
+  model into the old index (or orphaned rows after a clear).
+- **Search refuses a model mismatch**: semantic/hybrid search on an index built with another model answers 503
+  "rebuild the index" instead of meaningless scores; keyword search keeps working.
+- A PDF whose file was missing for a while is indexed again when the file comes back (it stayed "failed" before).
+- Disabling/updating waits for the plugin to shut down (indexer stopped, database closed; at most 30 s for a running
+  embedding request), so two versions no longer write to `seekbook.sqlite` at the same time.
+
 ## 0.3.3 – 2026-09-29
 - Passages merge at most 3 neighbouring windows (≈ 440 words, `MAX_MERGE_WINDOWS`). Runs of hits grew into passages
   of five pages and more before, which callers sent whole and again in overlapping pieces.

@@ -255,11 +255,21 @@ export const scenarios: Scenario[] = [
     }
   }],
 
-  ['model change ⇒ rebuild with new dimensions', async (ctx) => {
+  ['model change ⇒ index kept until rebuild, then new dimensions', async (ctx) => {
+    const before = (await api(PATHS.stats)).json;
     setPref('model', 'mock-embed-32');
     try {
       assert(await plugin().indexer.needsRebuild(), 'needsRebuild not reported');
+      // Neither "Index now" nor the context menu may clear the index of the old model.
       await plugin().indexer.indexNow();
+      await plugin().indexer.indexBooks([ctx.book], true);
+      const kept = (await api(PATHS.stats)).json;
+      assert(kept.dims === before.dims && kept.indexedBooks === before.indexedBooks && kept.needsRebuild, JSON.stringify(kept));
+      const refused = await api(PATHS.search, { q: 'Waermeinseln Quartier', mode: 'semantic' });
+      assert(refused.status === 503 && /rebuild/.test(refused.json.error), JSON.stringify(refused.json).slice(0, 200));
+      const kw = await api(PATHS.search, { q: 'Waermeinseln Quartier', mode: 'keyword' });
+      assert(kw.status === 200 && kw.json.results.length, 'keyword search must still work');
+      await plugin().indexer.rebuild();
       const stats = (await api(PATHS.stats)).json;
       assert(stats.dims === 32 && stats.indexedBooks === 2 && !stats.needsRebuild, JSON.stringify(stats));
       const r = await api(PATHS.search, { q: 'Waermeinseln Quartier', mode: 'semantic' });
@@ -267,7 +277,7 @@ export const scenarios: Scenario[] = [
     } finally {
       setPref('model', 'mock-embed');
     }
-    await plugin().indexer.indexNow();
+    await plugin().indexer.rebuild();
     ctx.rebuilt = true;
   }],
 
