@@ -48,6 +48,8 @@ class SeekBookPlugin {
   private observerID: string | null = null;
   private pendingItems = new Set<number>();
   private notifyTimer: Promise<void> | null = null;
+  /** The flush in progress, so shutdown can wait for it. */
+  private flushing: Promise<void> | null = null;
   private stopped = false;
   paneID: string | null = null;
 
@@ -88,6 +90,7 @@ class SeekBookPlugin {
     this.stopped = true;
     if (this.observerID) Zotero.Notifier.unregisterObserver(this.observerID);
     this.observerID = null;
+    this.pendingItems.clear();
     if (this.paneID) Zotero.PreferencePanes.unregister?.(this.paneID);
     this.paneID = null;
     unregisterEndpoints();
@@ -98,7 +101,8 @@ class SeekBookPlugin {
     await this.column.unregister();
     for (const win of Zotero.getMainWindows()) this.onMainWindowUnload(win);
     // An embedding request without answer must not block disabling/updating forever.
-    await Promise.race([this.indexer.stop(), Zotero.Promise.delay(SHUTDOWN_WAIT_MS)]);
+    // A flush in progress stops at its next check; wait for it before the database closes.
+    await Promise.race([Promise.all([this.indexer.stop(), this.flushing]), Zotero.Promise.delay(SHUTDOWN_WAIT_MS)]);
     scanPool.terminate();
     await this.store.close();
   }
@@ -171,14 +175,31 @@ class SeekBookPlugin {
     }
     if (!['add', 'modify', 'trash', 'refresh'].includes(event)) return;
     for (const id of ids) this.pendingItems.add(Number(id));
-    if (!this.notifyTimer) {
-      this.notifyTimer = Zotero.Promise.delay(NOTIFY_DELAY_MS).then(() => this.flushNotifications()).catch(logError)
-        .finally(() => { this.notifyTimer = null; });
-    }
+    this.scheduleFlush();
   };
+
+  /**
+   * One flush at a time, NOTIFY_DELAY_MS after the first pending event. Events that
+   * arrive during a flush get their own flush afterwards (they were lost before).
+   */
+  private scheduleFlush(): void {
+    if (this.notifyTimer || this.stopped) return;
+    this.notifyTimer = Zotero.Promise.delay(NOTIFY_DELAY_MS)
+      .then(() => {
+        if (this.stopped) return;
+        this.flushing = this.flushNotifications().catch(logError).finally(() => { this.flushing = null; });
+        return this.flushing;
+      })
+      .catch(logError)
+      .finally(() => {
+        this.notifyTimer = null;
+        if (this.pendingItems.size) this.scheduleFlush();
+      });
+  }
 
   /** A deleted item: a book (drop it) or an attachment of a book (drop that PDF). */
   private async forget(libraryKey: string, key: string): Promise<void> {
+    if (this.stopped) return;
     const book = await this.store.bookByKey(libraryKey, key);
     if (book) {
       await this.indexer.removeBook(book.bookPk);
@@ -194,10 +215,12 @@ class SeekBookPlugin {
   }
 
   async flushNotifications(): Promise<void> {
+    if (this.stopped) return;
     const ids = Array.from(this.pendingItems);
     this.pendingItems.clear();
     const books = new Map<number, any>();
     for (const id of ids) {
+      if (this.stopped) return;
       const item = Zotero.Items.get(id);
       if (!item) continue;
       const book = item.isAttachment?.() ? item.parentItem : item;
@@ -210,7 +233,10 @@ class SeekBookPlugin {
     if (!books.size) return;
     // Index built with other settings: leave it alone until the user rebuilds it.
     if (!(await this.indexer.checkConfig())) return;
-    for (const book of books.values()) await this.indexer.syncBook(book);
+    for (const book of books.values()) {
+      if (this.stopped) return;
+      await this.indexer.syncBook(book);
+    }
     void this.column.reload();
     if (readPrefs().autoIndex && (await this.store.queued()).length) void this.indexer.run();
   }

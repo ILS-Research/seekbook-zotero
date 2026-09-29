@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.7 – 2026-09-29
+Fixes from the code review, M2 and M6:
+- Searches run one after another in the scan pool. Two searches at the same time over scopes larger than the memory
+  limit evicted each other's PDFs and failed with "search worker lost N PDF(s)". A PDF the indexer rewrites during
+  a search is skipped for that search instead of failing it (M2).
+- Item changes after shutdown are no longer processed against the closed database; shutdown waits for a flush in
+  progress. Changes that arrived during a flush were lost until the next change; they now get their own flush (M6).
+
 ## 0.3.6 – 2026-09-29
 - **REST: protection against DNS rebinding** (review H6). The `/seekbook/*` endpoints answer 403 unless the `Host`
   header is `127.0.0.1`, `localhost` or `[::1]`. A web page whose domain resolves to 127.0.0.1 could otherwise read

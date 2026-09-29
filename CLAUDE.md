@@ -83,4 +83,4 @@ The host has no usable Node. **Everything runs in Docker** via the scripts (`doc
 
 ## Code-Review
 
-- `REVIEW_OPUS_5.5_NODOCS.md` (29.09.2026): Review of v0.3.3 based on the source code only (no docs). Findings H1–H6, M1–M10 and low-priority items (H1–H5 fixed in 0.3.4, M1/M3–M5/M7–M10 in 0.3.5, H6 in 0.3.6; open: M2, M6, low-priority items); check it before larger changes to the indexer, store, scan pool or REST.
+- `REVIEW_OPUS_5.5_NODOCS.md` (29.09.2026): Review of v0.3.3 based on the source code only (no docs). Findings H1–H6, M1–M10 and low-priority items (H1–H5 fixed in 0.3.4, M1/M3–M5/M7–M10 in 0.3.5, H6 in 0.3.6, M2/M6 in 0.3.7; open: low-priority items); check it before larger changes to the indexer, store, scan pool or REST.

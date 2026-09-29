@@ -34,6 +34,8 @@ export class ScanPool {
   private nextId = 1;
   private tick = 0;
   private started = false;
+  /** Searches run one after another: a parallel one would evict the PDFs the other just loaded. */
+  private queue: Promise<unknown> = Promise.resolve();
   /** Timings of the last search (ms), for reports. */
   last = { load: 0, scan: 0, loadedDocs: 0, workers: 0 };
 
@@ -135,7 +137,13 @@ export class ScanPool {
   }
 
   /** Best `k` candidates over `docPks`; `load` supplies vectors of PDFs not resident yet. */
-  async search(query: Float32Array, docPks: number[], k: number, load: Loader): Promise<{ id: number; score: number }[]> {
+  search(query: Float32Array, docPks: number[], k: number, load: Loader): Promise<{ id: number; score: number }[]> {
+    const run = this.queue.then(() => this.searchNow(query, docPks, k, load));
+    this.queue = run.catch(() => {});
+    return run;
+  }
+
+  private async searchNow(query: Float32Array, docPks: number[], k: number, load: Loader): Promise<{ id: number; score: number }[]> {
     this.start();
     this.last = { load: 0, scan: 0, loadedDocs: 0, workers: this.workers.length };
     const parts: { ids: Int32Array; scores: Float32Array }[] = [];
@@ -194,13 +202,19 @@ export class ScanPool {
       return out;
     }
     const perWorker = this.workers.map(() => [] as number[]);
-    for (const pk of docPks) perWorker[this.resident.get(pk)!.worker].push(pk);
+    for (const pk of docPks) {
+      // Dropped since it was loaded (the indexer rewrote or deleted the PDF): its new vectors come with the next search.
+      const r = this.resident.get(pk);
+      if (r) perWorker[r.worker].push(pk);
+    }
     const replies = await Promise.all(perWorker.map((pks, w) =>
       pks.length ? this.request(w, { type: 'search', query: query.slice(), docPks: pks, k }) : null));
     const out: { ids: Int32Array; scores: Float32Array }[] = [];
     for (const r of replies) {
       if (!r) continue;
-      if (r.missing?.length) throw new Error(`search worker lost ${r.missing.length} PDF(s)`);
+      // Missing because dropped meanwhile is fine; missing while still resident means the worker lost it.
+      const lost = (r.missing || []).filter((pk: number) => this.resident.has(pk));
+      if (lost.length) throw new Error(`search worker lost ${lost.length} PDF(s)`);
       out.push({ ids: r.ids, scores: r.scores });
     }
     return out;

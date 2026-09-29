@@ -63,3 +63,26 @@ test('pool without workers: loads lazily, keeps within the memory limit, scans o
   pool.invalidate();
   assert.equal(pool.stats().docs, 0);
 });
+
+test('parallel searches over scopes larger than the limit do not evict each other (M2)', async () => {
+  const floats = new Map<number, Float32Array>();
+  const docs = new Map([1, 2, 3, 4, 5, 6].map((pk) => [pk, doc(pk * 1000, 100, 32, floats)]));
+  const pool = new ScanPool(1, 1);
+  (pool as any).limitBytes = (100 * 32 + 100 * 8) * 2.5;
+  const load = async (pk: number) => {
+    await new Promise((r) => setImmediate(r));
+    const d = docs.get(pk)!;
+    return { ...d, matrix: d.matrix.slice(), chunkPks: d.chunkPks.slice(), scales: d.scales.slice() };
+  };
+  const qa = vec(32);
+  const qb = vec(32);
+  const scopeA = [1, 2, 3];
+  const scopeB = [4, 5, 6];
+  const expect = (q: Float32Array, scope: number[]) => Array.from(scanTopK(q, scope.map((pk) => docs.get(pk)!), 8).ids);
+  const [a, b] = await Promise.all([pool.search(qa, scopeA, 8, load), pool.search(qb, scopeB, 8, load)]);
+  assert.deepEqual(a.map((x) => x.id), expect(qa, scopeA));
+  assert.deepEqual(b.map((x) => x.id), expect(qb, scopeB));
+  // A failing search does not block the next one.
+  await assert.rejects(pool.search(qa, [1], 8, async () => { throw new Error('db gone'); }), /db gone/);
+  assert.equal((await pool.search(qa, [1], 3, load)).length, 3);
+});

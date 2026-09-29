@@ -7,7 +7,7 @@
 - **Nicht gelesen:** `test/**`, `e2e/**`
 - **Tests:** nicht ausgeführt. Das Node auf dem Host ist zu alt; der Build läuft in Docker über `build.sh`.
 
-> **Status:** H1–H5 behoben in v0.3.4; M1, M3, M4, M5, M7–M10 in v0.3.5. H6 in v0.3.6. Offen: M2, M6 und die Niedrig-Punkte.
+> **Status:** H1–H5 behoben in v0.3.4; M1, M3, M4, M5, M7–M10 in v0.3.5. H6 in v0.3.6; M2, M6 in v0.3.7. Offen: die Niedrig-Punkte.
 
 ## Gesamteindruck
 
@@ -88,7 +88,7 @@ Ablauf:
 
 `signal` wird unterstützt, aber der Indexer übergibt keins. Hängt der Server, hängen auch `stop()`, `pause()`, `rebuild()` und der Shutdown. `newAbortController` ([env.ts](src/util/env.ts)) ist schon vorhanden, wird aber nirgends benutzt.
 
-### M2 ScanPool: Race zwischen parallelen Suchen
+### ~~M2 ScanPool: Race zwischen parallelen Suchen~~ — ✅ behoben in 0.3.7
 [scan-pool.ts:138](src/core/scan-pool.ts#L138)
 
 `evict()` kennt nur das `keep`-Set der eigenen Suche. Eine zweite Suche, die gleichzeitig läuft, kann die gerade geladenen PDFs der ersten wieder verdrängen. Der Worker meldet sie dann als `missing`, und die erste Suche bricht mit „search worker lost N PDF(s)“ ab.
@@ -109,7 +109,7 @@ Ablauf:
 
 Ungültige oder unbekannte Bibliotheksschlüssel werden stillschweigend verworfen. Bleibt dabei die Liste leer, obwohl etwas eingetragen war, entfernt `scan()` ([Z. 169](src/core/indexer.ts#L169)) jedes Buch aus dem Index. Hier sollte eine Warnung kommen oder abgebrochen werden, statt zu löschen.
 
-### M6 Benachrichtigungen werden nach dem Shutdown noch verarbeitet
+### ~~M6 Benachrichtigungen werden nach dem Shutdown noch verarbeitet~~ — ✅ behoben in 0.3.7
 - `stopped` wird nur in `notify` geprüft, nicht in `flushNotifications` oder `forget`. Ein Timer, der noch läuft, greift nach `store.close()` auf die DB zu.
 - Zwei Flushes können sich überlappen, weil `notifyTimer` im `finally` zurückgesetzt wird, bevor der Flush fertig ist.
 
@@ -169,6 +169,6 @@ Das korrigiert sich erst beim nächsten Sync. Mit `autoIndex=false` passiert das
 
 1. ~~**H1, H2, H3 und H5.** Sie kosten Daten oder machen den Index inkonsistent. Ein gemeinsamer Fix ist möglich: ein Konfigurationswechsel pausiert nur noch, gelöscht wird nur über `rebuild()`, und `bootstrap.js` wartet `shutdown()` ab.~~ ✅ 0.3.4
 2. ~~**H6.** Sicherheit.~~ ✅ 0.3.6
-3. ~~**M1** und **M3**~~ ✅ 0.3.5 · **M2** offen. Hänger und Abstürze.
+3. ~~**M1, M2 und M3.** Hänger und Abstürze.~~ ✅ 0.3.5 / 0.3.7
 4. ~~**H4.** Kleiner Fix mit großer Wirkung für Nutzer mit synchronisierten Bibliotheken.~~ ✅ 0.3.4
 5. Die übrigen Punkte nach Gelegenheit.
