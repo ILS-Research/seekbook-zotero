@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.2 – 2026-09-29
+- Fix: log lines did not reach the Browser Console; they now go to the console service.
+
 ## 0.3.1 – 2026-09-29
 - **Logging** like ZotSeek: `[SeekBook:<module>] [INFO] …` in the Browser Console and Zotero's debug output –
   searches (query embedding + scan, keyword part, passages, total time), every REST request with status and time,
