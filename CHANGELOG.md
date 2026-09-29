@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.3 – 2026-09-29
+- Passages merge at most 3 neighbouring windows (≈ 440 words, `MAX_MERGE_WINDOWS`). Runs of hits grew into passages
+  of five pages and more before, which callers sent whole and again in overlapping pieces.
+
 ## 0.3.2 – 2026-09-29
 - Fix: log lines did not reach the Browser Console; they now go to the console service.
 

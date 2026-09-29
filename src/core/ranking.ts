@@ -81,11 +81,18 @@ function maxOrNull(a: number | null, b: number | null): number | null {
 }
 
 /**
- * Merges hits of the same PDF whose windows overlap or follow each other
- * (idx difference ≤ 1) into one passage: text and page range united, best
- * scores kept. Passages come back by descending score.
+ * Windows at most merged into one passage (≈ 440 words with 200/120). Without a
+ * cap a run of hits grew into passages of five pages and more, which callers
+ * like SeekChat then sent whole, and again in overlapping pieces.
  */
-export function mergePassages(hits: Hit[]): Passage[] {
+export const MAX_MERGE_WINDOWS = 3;
+
+/**
+ * Merges hits of the same PDF whose windows overlap or follow each other
+ * (idx difference ≤ 1) into one passage of at most `maxWindows` windows: text
+ * and page range united, best scores kept. Passages come back by descending score.
+ */
+export function mergePassages(hits: Hit[], maxWindows = MAX_MERGE_WINDOWS): Passage[] {
   const byDoc = new Map<number, Hit[]>();
   for (const h of hits) {
     const list = byDoc.get(h.docPk) || [];
@@ -97,7 +104,7 @@ export function mergePassages(hits: Hit[]): Passage[] {
     list.sort((a, b) => a.idx - b.idx);
     let cur: (Passage & { lastIdx: number; words: string[] }) | null = null;
     for (const h of list) {
-      if (cur && h.idx - cur.lastIdx <= 1) {
+      if (cur && h.idx - cur.lastIdx <= 1 && cur.chunkPks.length < maxWindows) {
         const words = h.text.split(' ');
         const k = overlapWords(cur.words, words);
         cur.words = cur.words.concat(words.slice(k));

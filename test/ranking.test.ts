@@ -41,6 +41,13 @@ test('neighbouring windows of one PDF merge into one passage', () => {
   assert.equal(overlapWords(['a', 'b'], ['c']), 0);
 });
 
+test('a run of neighbouring windows is cut into passages of at most MAX_MERGE_WINDOWS', () => {
+  const run = [0, 1, 2, 3, 4, 5, 6].map((i) => hit(10 + i, 1, i, `w${i} w${i + 1}`, i === 5 ? 0.9 : 0.5));
+  const merged = mergePassages(run, 3);
+  assert.deepEqual(merged.map((m) => m.chunkPks.length).sort(), [1, 3, 3]);
+  assert.equal(merged[0].chunkPks.includes(15), true, 'best window leads');
+});
+
 test('TopK keeps the best', () => {
   const t = new TopK(3);
   [5, 1, 9, 3, 7, 2, 8].forEach((s, i) => t.push(i, s));
