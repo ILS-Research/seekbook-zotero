@@ -16,11 +16,19 @@ const EN = {
   'prefs.docPrefix': 'Document prefix',
   'prefs.test': 'Test connection',
   'prefs.testing': 'Asking the server …',
-  'prefs.testOk': 'Connected: {dims} dimensions ({ms} ms).',
+  'prefs.testOk': 'Connected: {n} models on the server; {model} returns {dims} dimensions ({ms} ms).',
+  'prefs.noModels': 'The server lists no models.',
+  'prefs.notEmbedding': '(no embedding model?)',
   'prefs.error': 'Error: {message}',
-  'prefs.remoteHosts': 'Allowed remote hosts',
-  'prefs.remoteOff': 'Only this computer is used for embeddings.',
-  'prefs.remoteOn': 'Warning: the full text of all indexed books is sent to {hosts}.',
+  'prefs.remoteTitle': 'Allowed remote hosts (caution)',
+  'prefs.remoteHelp': 'Without an entry SeekBook only talks to a server on this computer (127.0.0.1, localhost). ' +
+    'Hosts listed here (comma-separated, without http:// and port, e.g. ollama.example.local) receive the full text ' +
+    'of every indexed book, window by window, and every search query. Whoever runs or administers this host or can ' +
+    'read its logs can read these contents; with http:// instead of https:// also anyone on the network in between. ' +
+    'Only list hosts in your own, trusted network that may receive this data.',
+  'prefs.remoteHosts': 'Allowed hosts:',
+  'prefs.remoteOn': 'Allowed: {hosts}. Book text and search queries to these hosts leave this computer.',
+  'prefs.remoteOff': 'No remote hosts allowed: SeekBook stays on this computer.',
   'prefs.indexing': 'Index',
   'prefs.libraries': 'Libraries (empty = all)',
   'prefs.excludeTag': 'Exclusion tag',
@@ -61,11 +69,19 @@ const DE: Record<Key, string> = {
   'prefs.docPrefix': 'Präfix für Dokumente',
   'prefs.test': 'Verbindung testen',
   'prefs.testing': 'Frage den Server …',
-  'prefs.testOk': 'Verbunden: {dims} Dimensionen ({ms} ms).',
+  'prefs.testOk': 'Verbunden: {n} Modelle auf dem Server; {model} liefert {dims} Dimensionen ({ms} ms).',
+  'prefs.noModels': 'Der Server nennt keine Modelle.',
+  'prefs.notEmbedding': '(kein Embedding-Modell?)',
   'prefs.error': 'Fehler: {message}',
-  'prefs.remoteHosts': 'Erlaubte entfernte Hosts',
-  'prefs.remoteOff': 'Embeddings werden nur auf diesem Rechner berechnet.',
-  'prefs.remoteOn': 'Achtung: Der Volltext aller indexierten Bücher geht an {hosts}.',
+  'prefs.remoteTitle': 'Erlaubte entfernte Hosts (Vorsicht)',
+  'prefs.remoteHelp': 'Ohne Eintrag spricht SeekBook nur mit einem Server auf diesem Rechner (127.0.0.1, localhost). ' +
+    'Hier eingetragene Hosts (kommagetrennt, ohne http:// und Port, z. B. ollama.example.local) erhalten den ' +
+    'Volltext aller indexierten Bücher (Fenster für Fenster) und jede Suchanfrage. Wer diesen Host betreibt, ' +
+    'administriert oder seine Logs lesen kann, kann diese Inhalte lesen; bei http:// statt https:// zusätzlich jeder ' +
+    'im Netzwerk dazwischen. Nur Hosts im eigenen, vertrauenswürdigen Netz eintragen, an die diese Daten gehen dürfen.',
+  'prefs.remoteHosts': 'Erlaubte Hosts:',
+  'prefs.remoteOn': 'Freigegeben: {hosts}. Buchtext und Suchanfragen an diese Hosts verlassen diesen Rechner.',
+  'prefs.remoteOff': 'Keine entfernten Hosts freigegeben: SeekBook bleibt auf diesem Rechner.',
   'prefs.indexing': 'Index',
   'prefs.libraries': 'Bibliotheken (leer = alle)',
   'prefs.excludeTag': 'Ausschluss-Tag',

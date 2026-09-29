@@ -5,7 +5,8 @@
   #seekbook-preferences .row { display: grid; grid-template-columns: 200px 1fr; gap: 6px 10px; align-items: center; max-width: 660px; }
   #seekbook-preferences .row input, #seekbook-preferences .row select, #seekbook-preferences .row textarea { width: 100%; box-sizing: border-box; font: inherit; }
   #seekbook-preferences .help { font-size: 11px; color: var(--fill-secondary); margin: 2px 0 8px 0; max-width: 660px; }
-  #seekbook-preferences .warn { color: #c62828; }
+  #seekbook-preferences .danger { margin-top: 10px; padding: 8px; border: 1px solid #c62828; border-radius: 4px; max-width: 660px; }
+  #seekbook-preferences .danger b { color: #c62828; }
   #seekbook-preferences .buttons { display: flex; gap: 8px; margin: 8px 0; }
   #seekbook-preferences ul { margin: 4px 0; padding-left: 18px; max-width: 660px; font-size: 12px; }
 </html:style>
@@ -23,18 +24,25 @@
     <html:label for="seekbook-apiKey" data-i18n="prefs.apiKey">API key</html:label>
     <html:input id="seekbook-apiKey" type="password"/>
     <html:label for="seekbook-model" data-i18n="prefs.model">Model</html:label>
-    <html:input id="seekbook-model" type="text"/>
+    <html:select id="seekbook-model"/>
     <html:label for="seekbook-queryPrefix" data-i18n="prefs.queryPrefix">Query prefix</html:label>
     <html:textarea id="seekbook-queryPrefix" rows="2"></html:textarea>
     <html:label for="seekbook-docPrefix" data-i18n="prefs.docPrefix">Document prefix</html:label>
     <html:input id="seekbook-docPrefix" type="text"/>
-    <html:label for="seekbook-allowedRemoteHosts" data-i18n="prefs.remoteHosts">Allowed remote hosts</html:label>
-    <html:input id="seekbook-allowedRemoteHosts" type="text"/>
   </html:div>
-  <html:div id="seekbook-remote-status" class="help warn"></html:div>
   <html:div class="buttons">
     <html:button id="seekbook-test" data-i18n="prefs.test">Test connection</html:button>
-    <html:span id="seekbook-test-status"></html:span>
+    <html:span id="seekbook-test-status" class="help"></html:span>
+  </html:div>
+
+  <html:div class="danger">
+    <html:p style="margin: 0 0 6px 0;"><html:b data-i18n="prefs.remoteTitle">Allowed remote hosts (caution)</html:b></html:p>
+    <html:p class="help" style="color: inherit;" data-i18n="prefs.remoteHelp">Without an entry SeekBook only talks to a server on this computer.</html:p>
+    <html:div class="row">
+      <html:label for="seekbook-allowedRemoteHosts" data-i18n="prefs.remoteHosts">Allowed hosts:</html:label>
+      <html:input type="text" id="seekbook-allowedRemoteHosts" placeholder="ollama.example.local"/>
+    </html:div>
+    <html:p id="seekbook-remote-status" class="help"/>
   </html:div>
 </groupbox>
 

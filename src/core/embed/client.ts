@@ -85,3 +85,30 @@ export async function embed(cfg: EmbeddingConfig, input: string[], opts: EmbedOp
   }
   throw lastError;
 }
+
+// Names of common embedding model families (Ollama lists chat and embedding models together).
+const EMBEDDING_NAME = /embed|bge|\be5\b|e5-|minilm|gte|arctic|nomic|mxbai|jina|granite-embedding/i;
+
+export function isEmbeddingModelName(name: string): boolean {
+  return EMBEDDING_NAME.test(name);
+}
+
+/** Model names from a /api/tags or /models response: embedding models first, each group sorted. */
+export function parseModelList(json: any): string[] {
+  const names: string[] = Array.isArray(json?.models) ? json.models.map((m: any) => String(m?.name ?? m?.model ?? ''))
+    : Array.isArray(json?.data) ? json.data.map((m: any) => String(m?.id ?? '')) : [];
+  const unique = Array.from(new Set(names.filter(Boolean))).sort();
+  return [...unique.filter(isEmbeddingModelName), ...unique.filter((n) => !isEmbeddingModelName(n))];
+}
+
+/** Models on the server (GET /api/tags or /models), same as in SeekChat. */
+export async function listModels(cfg: Omit<EmbeddingConfig, 'model'>): Promise<string[]> {
+  const base = cfg.baseUrl.replace(/\/+$/, '');
+  const url = cfg.provider === 'openai' ? `${base}/models` : `${base}/api/tags`;
+  assertAllowedUrl(url, parseAllowedHosts(cfg.allowedRemoteHosts));
+  const headers: Record<string, string> = {};
+  if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`;
+  const resp = await getFetch()(url, { method: 'GET', headers, redirect: 'error' });
+  if (!resp.ok) throw new EmbeddingError(`model list: HTTP ${resp.status}`);
+  return parseModelList(await resp.json());
+}

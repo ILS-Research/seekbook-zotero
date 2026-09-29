@@ -280,6 +280,16 @@ export const scenarios: Scenario[] = [
         return el?.textContent?.includes('Bücher fertig') ? el.textContent : null;
       }, 20000);
       ctx.prefsCounts = counts;
+      // Connection test fills the model dropdown from /api/tags, embedding models first.
+      prefsWin.document.getElementById('seekbook-test').click();
+      const status = await waitFor('connection test', () => {
+        const el = prefsWin.document.getElementById('seekbook-test-status');
+        return /Verbunden|Fehler/.test(el?.textContent || '') ? el.textContent : null;
+      }, 10000);
+      assert(status.includes('Verbunden: 3 Modelle') && status.includes('64 Dimensionen'), status);
+      const options = Array.from(prefsWin.document.getElementById('seekbook-model').options).map((o: any) => o.value);
+      assert(options.join() === 'mock-embed,mock-embed-32,llama3:8b', options.join());
+      assert(prefsWin.document.querySelector('#seekbook-preferences .danger #seekbook-allowedRemoteHosts'), 'caution box');
     } finally {
       prefsWin.close();
     }

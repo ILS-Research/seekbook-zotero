@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1 – 2026-09-29
+- Settings: "Allowed remote hosts" as a red caution box below the server, same layout and wording as SeekChat and the ZotSeek fork.
+- Settings: model dropdown filled by "Test connection" from the server (/api/tags or /models), embedding models first, others marked; the test also embeds once and reports the dimensions.
+
 ## 0.1.0 – 2026-09-29
 - M0: plugin skeleton, Docker build, unit tests, E2E harness (Zotero 10.0.3 under Xvfb, mock embedding server).
 - M1: all PDFs per book (reading order, duplicates by hash and by containment), running headers/footers, TOC pages,

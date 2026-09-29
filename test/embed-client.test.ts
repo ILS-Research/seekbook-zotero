@@ -39,3 +39,10 @@ test('remote host needs the allow-list; retries on 500, not on 400', async () =>
     globalThis.fetch = orig;
   }
 });
+
+test('model list: embedding models first', async () => {
+  const { parseModelList } = await import('../src/core/embed/client');
+  assert.deepEqual(parseModelList({ models: [{ name: 'qwen3:8b' }, { name: 'qwen3-embedding:8b' }, { name: 'bge-m3:latest' }] }),
+    ['bge-m3:latest', 'qwen3-embedding:8b', 'qwen3:8b']);
+  assert.deepEqual(parseModelList({ data: [{ id: 'text-embedding-3-small' }, { id: 'gpt-4o' }] }), ['text-embedding-3-small', 'gpt-4o']);
+});

@@ -1,5 +1,5 @@
 /** Settings pane: fields <-> prefs, connection test, index status and controls. */
-import { embed } from '../core/embed/client';
+import { embed, isEmbeddingModelName, listModels } from '../core/embed/client';
 import { parseAllowedHosts } from '../core/host-guard';
 import { t, type Key } from '../i18n';
 import { getPref, readPrefs, setPref } from '../prefs';
@@ -18,7 +18,7 @@ export interface PaneBackend {
   apiChanged(): void;
 }
 
-const TEXT_PREFS = ['baseUrl', 'apiKey', 'model', 'excludeTag', 'libraries', 'docPrefix'];
+const TEXT_PREFS = ['baseUrl', 'apiKey', 'excludeTag', 'libraries', 'docPrefix'];
 const INT_PREFS = ['chunkWords', 'strideWords'];
 
 export function onPrefsLoad(win: Window, backend: PaneBackend): void {
@@ -79,13 +79,34 @@ export function onPrefsLoad(win: Window, backend: PaneBackend): void {
     });
   }
 
+  // Model: dropdown filled from the server by "Test connection" (like SeekChat); embedding models first.
+  const model = $<HTMLSelectElement>('model');
+  const fillModels = (names: string[]) => {
+    if (!model) return;
+    const current = readPrefs().model;
+    const all = current && !names.includes(current) ? [current, ...names] : names;
+    model.replaceChildren(...all.map((n) => {
+      const o = doc.createElementNS('http://www.w3.org/1999/xhtml', 'option') as HTMLOptionElement;
+      o.value = n;
+      o.textContent = isEmbeddingModelName(n) || n === current ? n : `${n} ${t('prefs.notEmbedding')}`;
+      return o;
+    }));
+    if (current) model.value = current;
+    else if (all.length) setPref('model', (model.value = all[0]));
+  };
+  fillModels([]);
+  model?.addEventListener('change', () => setPref('model', model.value));
+
   $('test')?.addEventListener('click', async () => {
     setText('test-status', t('prefs.testing'));
     const t0 = Date.now();
     try {
+      const names = await listModels(readPrefs());
+      fillModels(names);
       const prefs = readPrefs();
+      if (!prefs.model) throw new Error(t('prefs.noModels'));
       const [v] = await embed(prefs, [prefs.queryPrefix + 'test'], { retries: 0 });
-      setText('test-status', t('prefs.testOk', { dims: v.length, ms: Date.now() - t0 }));
+      setText('test-status', t('prefs.testOk', { n: names.length, model: prefs.model, dims: v.length, ms: Date.now() - t0 }));
     } catch (e: any) {
       setText('test-status', t('prefs.error', { message: e?.message || e }));
     }

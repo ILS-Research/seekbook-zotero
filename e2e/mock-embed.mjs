@@ -28,6 +28,9 @@ const server = http.createServer(async (req, res) => {
     res.end(JSON.stringify(data));
   };
   const url = new URL(req.url, 'http://x');
+  if (req.method === 'GET' && url.pathname === '/api/tags') {
+    return json(200, { models: [{ name: 'llama3:8b' }, { name: 'mock-embed' }, { name: 'mock-embed-32' }] });
+  }
   if (req.method === 'GET' && url.pathname === '/__requests') return json(200, { requests, inputs });
   if (req.method === 'POST' && url.pathname === '/__fail') {
     failing = url.searchParams.get('on') === '1';
