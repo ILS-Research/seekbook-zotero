@@ -1,0 +1,75 @@
+<vbox id="seekbook-preferences"
+      xmlns:html="http://www.w3.org/1999/xhtml"
+      onload="Zotero.SeekBook?.onPrefsLoad(window)">
+<html:style>
+  #seekbook-preferences .row { display: grid; grid-template-columns: 200px 1fr; gap: 6px 10px; align-items: center; max-width: 660px; }
+  #seekbook-preferences .row input, #seekbook-preferences .row select, #seekbook-preferences .row textarea { width: 100%; box-sizing: border-box; font: inherit; }
+  #seekbook-preferences .help { font-size: 11px; color: var(--fill-secondary); margin: 2px 0 8px 0; max-width: 660px; }
+  #seekbook-preferences .warn { color: #c62828; }
+  #seekbook-preferences .buttons { display: flex; gap: 8px; margin: 8px 0; }
+  #seekbook-preferences ul { margin: 4px 0; padding-left: 18px; max-width: 660px; font-size: 12px; }
+</html:style>
+
+<groupbox>
+  <label><html:h2 data-i18n="prefs.server">Embedding server</html:h2></label>
+  <html:div class="row">
+    <html:label for="seekbook-provider" data-i18n="prefs.provider">Interface</html:label>
+    <html:select id="seekbook-provider">
+      <html:option value="ollama" data-i18n="prefs.providerOllama">Ollama</html:option>
+      <html:option value="openai" data-i18n="prefs.providerOpenai">OpenAI-compatible</html:option>
+    </html:select>
+    <html:label for="seekbook-baseUrl" data-i18n="prefs.baseUrl">Server URL</html:label>
+    <html:input id="seekbook-baseUrl" type="text"/>
+    <html:label for="seekbook-apiKey" data-i18n="prefs.apiKey">API key</html:label>
+    <html:input id="seekbook-apiKey" type="password"/>
+    <html:label for="seekbook-model" data-i18n="prefs.model">Model</html:label>
+    <html:input id="seekbook-model" type="text"/>
+    <html:label for="seekbook-queryPrefix" data-i18n="prefs.queryPrefix">Query prefix</html:label>
+    <html:textarea id="seekbook-queryPrefix" rows="2"></html:textarea>
+    <html:label for="seekbook-docPrefix" data-i18n="prefs.docPrefix">Document prefix</html:label>
+    <html:input id="seekbook-docPrefix" type="text"/>
+    <html:label for="seekbook-allowedRemoteHosts" data-i18n="prefs.remoteHosts">Allowed remote hosts</html:label>
+    <html:input id="seekbook-allowedRemoteHosts" type="text"/>
+  </html:div>
+  <html:div id="seekbook-remote-status" class="help warn"></html:div>
+  <html:div class="buttons">
+    <html:button id="seekbook-test" data-i18n="prefs.test">Test connection</html:button>
+    <html:span id="seekbook-test-status"></html:span>
+  </html:div>
+</groupbox>
+
+<groupbox>
+  <label><html:h2 data-i18n="prefs.indexing">Index</html:h2></label>
+  <html:div class="row">
+    <html:label for="seekbook-libraries" data-i18n="prefs.libraries">Libraries</html:label>
+    <html:input id="seekbook-libraries" type="text" placeholder="user, group:123"/>
+    <html:label for="seekbook-excludeTag" data-i18n="prefs.excludeTag">Exclusion tag</html:label>
+    <html:input id="seekbook-excludeTag" type="text"/>
+    <html:label for="seekbook-preferDuplicates" data-i18n="prefs.preferDuplicates">Duplicates</html:label>
+    <html:select id="seekbook-preferDuplicates">
+      <html:option value="whole" data-i18n="prefs.preferWhole">Whole</html:option>
+      <html:option value="parts" data-i18n="prefs.preferParts">Parts</html:option>
+    </html:select>
+    <html:label for="seekbook-chunkWords" data-i18n="prefs.chunkWords">Window length</html:label>
+    <html:input id="seekbook-chunkWords" type="number" min="40" max="2000"/>
+    <html:label for="seekbook-strideWords" data-i18n="prefs.strideWords">Window step</html:label>
+    <html:input id="seekbook-strideWords" type="number" min="10" max="2000"/>
+  </html:div>
+  <html:div class="help" data-i18n="prefs.expertHint"></html:div>
+  <html:label><html:input id="seekbook-autoIndex" type="checkbox"/> <html:span data-i18n="prefs.autoIndex">Auto</html:span></html:label>
+  <html:label><html:input id="seekbook-apiEnabled" type="checkbox"/> <html:span data-i18n="prefs.api">REST</html:span></html:label>
+</groupbox>
+
+<groupbox>
+  <label><html:h2 data-i18n="prefs.status">Status</html:h2></label>
+  <html:div id="seekbook-counts"></html:div>
+  <html:div id="seekbook-progress" class="help"></html:div>
+  <html:div class="buttons">
+    <html:button id="seekbook-indexNow" data-i18n="prefs.indexNow">Index now</html:button>
+    <html:button id="seekbook-pause" data-i18n="prefs.pause">Pause</html:button>
+    <html:button id="seekbook-rebuild" data-i18n="prefs.rebuild">Rebuild</html:button>
+  </html:div>
+  <html:div data-i18n="prefs.failedList">Failed PDFs</html:div>
+  <html:ul id="seekbook-failed"></html:ul>
+</groupbox>
+</vbox>

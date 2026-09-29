@@ -1,0 +1,156 @@
+/**
+ * SeekBook: full-text index for books in Zotero, served over a local REST API.
+ * Entry point; bootstrap.js calls startup()/shutdown().
+ */
+import { Indexer } from './core/indexer';
+import { API_VERSION, registerEndpoints, statsPayload, unregisterEndpoints } from './core/rest';
+import { search, vectorCache, type SearchOptions } from './core/search';
+import { Store } from './core/store';
+import { libraryKeyOf } from './core/zotero-items';
+import { readPrefs } from './prefs';
+import { onPrefsLoad } from './ui/preferences';
+import { log, logError } from './util/log';
+
+/** Delay before changed books are picked up (a new attachment brings several notifier events). */
+const NOTIFY_DELAY_MS = 5000;
+
+class SeekBookPlugin {
+  readonly apiVersion = API_VERSION;
+  info = { id: '', version: '', rootURI: '' };
+  store = new Store();
+  indexer = new Indexer(this.store);
+  private observerID: string | null = null;
+  private pendingItems = new Set<number>();
+  private notifyTimer: Promise<void> | null = null;
+  private stopped = false;
+  paneID: string | null = null;
+
+  async startup(info: { id: string; version: string; rootURI: string }): Promise<void> {
+    this.info = info;
+    this.stopped = false;
+    await this.store.open();
+    this.applyApiPref();
+    this.observerID = Zotero.Notifier.registerObserver({ notify: this.notify }, ['item'], 'seekbook');
+    try {
+      this.paneID = await Zotero.PreferencePanes.register({
+        pluginID: info.id,
+        src: `${info.rootURI}content/preferences.xhtml`,
+        label: 'SeekBook',
+        image: `${info.rootURI}content/icons/seekbook.svg`,
+      });
+    } catch (e) {
+      logError(e);
+    }
+    // Resume an interrupted queue (status survives restarts).
+    if ((await this.store.queued()).length && readPrefs().model) void this.indexer.run();
+    log(`started ${info.version}`);
+  }
+
+  async shutdown(): Promise<void> {
+    this.stopped = true;
+    if (this.observerID) Zotero.Notifier.unregisterObserver(this.observerID);
+    this.observerID = null;
+    if (this.paneID) Zotero.PreferencePanes.unregister?.(this.paneID);
+    this.paneID = null;
+    unregisterEndpoints();
+    await this.indexer.stop();
+    vectorCache.invalidate();
+    await this.store.close();
+  }
+
+  applyApiPref(): void {
+    if (readPrefs().apiEnabled) registerEndpoints(this.store, this.indexer);
+    else unregisterEndpoints();
+  }
+
+  private notify = (event: string, type: string, ids: (number | string)[], extra: any): void => {
+    if (type !== 'item' || this.stopped) return;
+    if (event === 'delete') {
+      // Deleted items are gone from Zotero.Items; extra has library and key.
+      for (const id of ids) {
+        const d = extra?.[id];
+        const lib = d?.libraryID !== undefined ? libraryKeyOf(d.libraryID) : null;
+        if (lib && d.key) void this.forget(lib, d.key).catch(logError);
+      }
+      return;
+    }
+    if (!['add', 'modify', 'trash', 'refresh'].includes(event)) return;
+    for (const id of ids) this.pendingItems.add(Number(id));
+    if (!this.notifyTimer) {
+      this.notifyTimer = Zotero.Promise.delay(NOTIFY_DELAY_MS).then(() => this.flushNotifications()).catch(logError)
+        .finally(() => { this.notifyTimer = null; });
+    }
+  };
+
+  /** A deleted item: a book (drop it) or an attachment of a book (drop that PDF). */
+  private async forget(libraryKey: string, key: string): Promise<void> {
+    const book = await this.store.bookByKey(libraryKey, key);
+    if (book) {
+      await this.indexer.removeBook(book.bookPk);
+      return;
+    }
+    const doc = await this.store.documentByKey(libraryKey, key);
+    if (doc) {
+      vectorCache.invalidate(doc.docPk);
+      await this.store.deleteDocument(doc.docPk);
+    }
+  }
+
+  async flushNotifications(): Promise<void> {
+    const ids = Array.from(this.pendingItems);
+    this.pendingItems.clear();
+    const books = new Map<number, any>();
+    for (const id of ids) {
+      const item = Zotero.Items.get(id);
+      if (!item) continue;
+      const book = item.isAttachment?.() ? item.parentItem : item;
+      if (!book) continue;
+      const lib = libraryKeyOf(book.libraryID);
+      // Known books are always kept in sync (trash, removed PDF); new ones only with automatic indexing.
+      const known = lib ? await this.store.bookByKey(lib, book.key) : null;
+      if (known || (readPrefs().autoIndex && book.itemType === 'book')) books.set(book.id, book);
+    }
+    if (!books.size) return;
+    await this.indexer.checkConfig();
+    for (const book of books.values()) await this.indexer.syncBook(book);
+    if (readPrefs().autoIndex && (await this.store.queued()).length) void this.indexer.run();
+  }
+
+  onPrefsLoad = (win: Window): void => {
+    onPrefsLoad(win, {
+      counts: () => this.store.counts(),
+      failed: async () => {
+        const rows = await this.store.query(
+          `SELECT b.title, d.attachment_title, d.error FROM documents d JOIN books b ON b.book_pk = d.book_pk
+           WHERE d.status = 'failed' ORDER BY b.title LIMIT 100`);
+        return rows.map((r) => ({ title: [r.title, r.attachment_title].filter(Boolean).join(' – '), error: r.error || '' }));
+      },
+      progress: () => this.indexer.progress,
+      needsRebuild: () => this.indexer.needsRebuild(),
+      indexNow: () => void this.indexer.indexNow().catch(logError),
+      pause: () => this.indexer.pause(),
+      rebuild: () => void this.indexer.rebuild().catch(logError),
+      onChange: (fn) => this.indexer.onChange(fn),
+      apiChanged: () => this.applyApiPref(),
+    });
+  };
+
+  // JS interface for plugins in the same process (same shapes as REST; REST stays the contract).
+
+  async search(q: string, opts: SearchOptions = {}): Promise<{ query: string; mode: string; source: 'seekbook'; apiVersion: number; results: unknown[] }> {
+    const results = await search(this.store, q, opts);
+    return { query: q, mode: opts.mode ?? 'hybrid', source: 'seekbook', apiVersion: API_VERSION, results };
+  }
+
+  stats(): Promise<Record<string, unknown>> {
+    return statsPayload(this.store, this.indexer);
+  }
+
+  async isIndexed(libraryKey: string, itemKey: string): Promise<boolean> {
+    const book = await this.store.bookByKey(libraryKey, itemKey);
+    if (!book) return false;
+    return (await this.store.documents(book.bookPk)).some((d) => d.status === 'ready');
+  }
+}
+
+Zotero.SeekBook = new SeekBookPlugin();
