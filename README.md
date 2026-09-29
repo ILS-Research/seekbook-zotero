@@ -17,6 +17,7 @@ over Zotero's local HTTP server. Built for SeekChat; ZotSeek can mix in book res
 | `GET /seekbook/stats` | – |
 | `GET /seekbook/search` | `q`, `topK` (1–100), `libraryKey`, `mode` (`hybrid`/`semantic`/`keyword`), `minSimilarity`, `itemKeys`, `attachmentKeys`, `expand` (`none`/`page`) |
 | `GET /seekbook/pages` | `libraryKey`, `attachmentKey` + `pages` (`45`, `10-12`, max. 10) — or `itemKey` + `pageLabel` |
+| `GET /seekbook/books` | `libraryKey`, `itemKeys` (optional): per book `readyDocuments`, `queuedDocuments`, `failedDocuments`, `totalDocuments`, `searchable` |
 
 Search results use the shape of ZotSeek's `/zotseek/search` (`granularity=passages`); `matchedChunk` additionally
 has `pageEnd`, `pageLabel`, `chapter`, `chapterSource`, `attachmentKey`, `attachmentTitle`, `chunkIndex`.

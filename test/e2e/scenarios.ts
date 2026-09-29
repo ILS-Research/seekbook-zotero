@@ -188,6 +188,15 @@ export const scenarios: Scenario[] = [
     assert((await api(PATHS.pages, { attachmentKey: ctx.whole.key, pages: '1-20' })).status === 400, 'too many pages');
   }],
 
+  ['REST /seekbook/books: searchable books by key', async (ctx) => {
+    const r = await api(PATHS.books, { libraryKey: 'user' });
+    assert(r.status === 200 && r.json.books.filter((b: any) => b.searchable).length === 2, JSON.stringify(r.json).slice(0, 400));
+    const book = r.json.books.find((b: any) => b.itemKey === ctx.book.key);
+    assert(book?.searchable && book.readyDocuments === 1 && book.totalDocuments === 3, JSON.stringify(book));
+    const one = await api(PATHS.books, { itemKeys: `${ctx.book.key},${ctx.article.key}` });
+    assert(one.json.books.map((b: any) => b.itemKey).join() === ctx.book.key, JSON.stringify(one.json));
+  }],
+
   ['JS interface Zotero.SeekBook', async (ctx) => {
     const res = await plugin().search('Waermeinseln', { topK: 3, mode: 'keyword' });
     assert(res.results.length && res.results[0].itemKey === ctx.book.key, JSON.stringify(res).slice(0, 200));

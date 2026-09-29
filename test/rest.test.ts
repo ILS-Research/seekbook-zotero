@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { HttpError, isAllowedOrigin, parsePageRange, parseSearchParams } from '../src/core/rest';
+import { booksPayload, HttpError, isAllowedOrigin, parsePageRange, parseSearchParams } from '../src/core/rest';
 import { parseSearchResponse } from './fixtures/seekchat-parse';
 
 test('search parameters are validated', () => {
@@ -36,4 +36,23 @@ test("SeekChat's parser reads a SeekBook result unchanged", () => {
   assert.equal(passages[0].page, 304);
   assert.equal(passages[0].text, 'Text');
   assert.equal(passages[0].textSource, 'book');
+});
+
+test('books endpoint: searchable books of one library, optionally by key', async () => {
+  const docs: Record<number, { status: string }[]> = {
+    1: [{ status: 'ready' }, { status: 'queued' }], 2: [{ status: 'failed' }], 3: [{ status: 'ready' }],
+  };
+  const store: any = {
+    books: async () => [
+      { bookPk: 1, libraryKey: 'user', itemKey: 'A' },
+      { bookPk: 2, libraryKey: 'user', itemKey: 'B' },
+      { bookPk: 3, libraryKey: 'group:7', itemKey: 'C' },
+    ],
+    documents: async (pk: number) => docs[pk],
+  };
+  const all: any = await booksPayload(store, new URLSearchParams('libraryKey=user'));
+  assert.deepEqual(all.books.map((b: any) => [b.itemKey, b.searchable, b.readyDocuments, b.queuedDocuments]), [['A', true, 1, 1], ['B', false, 0, 0]]);
+  const some: any = await booksPayload(store, new URLSearchParams('libraryKey=user&itemKeys=B'));
+  assert.deepEqual(some.books.map((b: any) => b.itemKey), ['B']);
+  await assert.rejects(booksPayload(store, new URLSearchParams('libraryKey=x')), HttpError);
 });

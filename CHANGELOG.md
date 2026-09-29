@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.0 – 2026-09-29
+- **REST `/seekbook/books`**: books of a library (optionally `itemKeys`) with their document counts and whether they
+  are searchable. SeekChat uses it to send indexed books to the index and the others to its keyword reading.
+
 ## 0.2.0 – 2026-09-29
 - **Chapter boundaries at character level**: each heading (bookmark, printed table of contents, detected heading) is
   located in the cleaned text of its start page, using the bookmark's y position where the PDF has one; windows never

@@ -1,6 +1,6 @@
 /**
  * REST interface on Zotero's local server (127.0.0.1:<Zotero.Server.port>):
- * GET /seekbook/stats, /seekbook/search, /seekbook/pages. Same security rules
+ * GET /seekbook/stats, /seekbook/search, /seekbook/pages, /seekbook/books. Same security rules
  * as ZotSeek: local Origin only; callers send `Zotero-Allowed-Request: 1`.
  * Search results have the shape of ZotSeek's `/zotseek/search` results.
  */
@@ -11,7 +11,7 @@ import { isValidLibraryKey } from './zotero-items';
 import { readPrefs } from '../prefs';
 
 export const API_VERSION = 1;
-export const PATHS = { stats: '/seekbook/stats', search: '/seekbook/search', pages: '/seekbook/pages' };
+export const PATHS = { stats: '/seekbook/stats', search: '/seekbook/search', pages: '/seekbook/pages', books: '/seekbook/books' };
 export const MAX_PAGES = 10;
 
 type Response = [number, string, string];
@@ -150,6 +150,33 @@ export async function pagesPayload(store: Store, sp: URLSearchParams): Promise<R
   };
 }
 
+/**
+ * Books of one library and how much of each is searchable, optionally only
+ * `itemKeys`. Lets callers split books between this index and their own
+ * reading (a book is searchable once one of its PDFs is ready).
+ */
+export async function booksPayload(store: Store, sp: URLSearchParams): Promise<Record<string, unknown>> {
+  const libraryKey = sp.get('libraryKey') || 'user';
+  if (!isValidLibraryKey(libraryKey)) throw new HttpError(400, 'libraryKey must be "user" or "group:<id>"');
+  const only = list(sp.get('itemKeys'));
+  const wanted = only ? new Set(only) : null;
+  const books = [];
+  for (const b of await store.books()) {
+    if (b.libraryKey !== libraryKey || (wanted && !wanted.has(b.itemKey))) continue;
+    const docs = await store.documents(b.bookPk);
+    const count = (...st: string[]) => docs.filter((d) => st.includes(d.status)).length;
+    books.push({
+      itemKey: b.itemKey,
+      readyDocuments: count('ready'),
+      queuedDocuments: count('queued', 'indexing'),
+      failedDocuments: count('failed'),
+      totalDocuments: docs.length,
+      searchable: count('ready') > 0,
+    });
+  }
+  return { libraryKey, apiVersion: API_VERSION, books };
+}
+
 function guard(handler: (sp: URLSearchParams) => Promise<unknown>) {
   return async (requestData: any): Promise<Response> => {
     if (!isAllowedOrigin(requestData?.headers?.['origin'] ?? requestData?.headers?.['Origin'])) {
@@ -190,6 +217,7 @@ export function registerEndpoints(store: Store, indexer: Indexer): void {
     return { query: q, mode, source: 'seekbook', apiVersion: API_VERSION, results };
   }));
   server.Endpoints[PATHS.pages] = endpoint(guard((sp) => pagesPayload(store, sp)));
+  server.Endpoints[PATHS.books] = endpoint(guard((sp) => booksPayload(store, sp)));
 }
 
 export function unregisterEndpoints(): void {
