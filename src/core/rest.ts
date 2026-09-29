@@ -9,6 +9,9 @@ import { search, type SearchMode, type SearchOptions } from './search';
 import type { Store } from './store';
 import { isValidLibraryKey } from './zotero-items';
 import { readPrefs } from '../prefs';
+import { logger } from '../util/log';
+
+const L = logger('REST');
 
 export const API_VERSION = 1;
 export const PATHS = { stats: '/seekbook/stats', search: '/seekbook/search', pages: '/seekbook/pages', books: '/seekbook/books' };
@@ -177,16 +180,25 @@ export async function booksPayload(store: Store, sp: URLSearchParams): Promise<R
   return { libraryKey, apiVersion: API_VERSION, books };
 }
 
-function guard(handler: (sp: URLSearchParams) => Promise<unknown>) {
+function guard(handler: (sp: URLSearchParams) => Promise<unknown>, path = '') {
   return async (requestData: any): Promise<Response> => {
+    const t0 = Date.now();
+    const done = (r: Response) => {
+      L.info(`GET ${path}?${requestData?.searchParams || ''} → ${r[0]} in ${Date.now() - t0} ms`);
+      return r;
+    };
     if (!isAllowedOrigin(requestData?.headers?.['origin'] ?? requestData?.headers?.['Origin'])) {
-      return json(403, { error: 'Forbidden: non-local Origin' });
+      return done(json(403, { error: 'Forbidden: non-local Origin' }));
     }
     try {
-      return json(200, await handler(requestData.searchParams || new URLSearchParams()));
+      return done(json(200, await handler(requestData.searchParams || new URLSearchParams())));
     } catch (e: any) {
-      if (e instanceof HttpError) return json(e.status, { error: e.message, ...e.extra });
-      return json(500, { error: String(e?.message || e) });
+      if (e instanceof HttpError) {
+        L.warn(`${path}: ${e.status} ${e.message}`);
+        return done(json(e.status, { error: e.message, ...e.extra }));
+      }
+      L.error(`${path}: ${e?.message || e}`);
+      return done(json(500, { error: String(e?.message || e) }));
     }
   };
 }
@@ -200,7 +212,7 @@ function endpoint(init: (requestData: any) => Promise<Response>): any {
 export function registerEndpoints(store: Store, indexer: Indexer): void {
   const server = Zotero.Server;
   if (!server?.Endpoints) return;
-  server.Endpoints[PATHS.stats] = endpoint(guard(() => statsPayload(store, indexer)));
+  server.Endpoints[PATHS.stats] = endpoint(guard(() => statsPayload(store, indexer), PATHS.stats));
   server.Endpoints[PATHS.search] = endpoint(guard(async (sp) => {
     const { q, opts } = parseSearchParams(sp);
     const prefs = readPrefs();
@@ -215,9 +227,9 @@ export function registerEndpoints(store: Store, indexer: Indexer): void {
       throw new HttpError(503, `search failed: ${e?.message || e}`);
     }
     return { query: q, mode, source: 'seekbook', apiVersion: API_VERSION, results };
-  }));
-  server.Endpoints[PATHS.pages] = endpoint(guard((sp) => pagesPayload(store, sp)));
-  server.Endpoints[PATHS.books] = endpoint(guard((sp) => booksPayload(store, sp)));
+  }, PATHS.search));
+  server.Endpoints[PATHS.pages] = endpoint(guard((sp) => pagesPayload(store, sp), PATHS.pages));
+  server.Endpoints[PATHS.books] = endpoint(guard((sp) => booksPayload(store, sp), PATHS.books));
 }
 
 export function unregisterEndpoints(): void {

@@ -6,6 +6,7 @@
  * Result shape = ZotSeek's `results[]` for granularity=passages, plus fields
  * ZotSeek parsers ignore (pageEnd, pageLabel, chapter, attachmentKey …).
  */
+import { logger } from '../util/log';
 import { embed } from './embed/client';
 import { bytesToFloat, dot, normalize } from './embed/vectors';
 import { loadDocVectors, ScanPool } from './scan-pool';
@@ -120,20 +121,24 @@ async function keywordScores(store: Store, docs: ScopeDoc[], query: string): Pro
   return bm25(postings, stats?.n || 0, stats?.avg || 0);
 }
 
+const L = logger('Search');
+
 export async function search(store: Store, query: string, opts: SearchOptions = {}, prefs = readPrefs()): Promise<SearchResult[]> {
   const topK = Math.min(100, Math.max(1, opts.topK ?? 20));
   const mode = opts.mode ?? 'hybrid';
+  const t0 = Date.now();
   const docs = await scopeDocs(store, opts);
+  L.info(`"${query.slice(0, 100)}" (${mode}, topK ${topK}${opts.itemKeys ? `, ${opts.itemKeys.length} books` : ''}${opts.libraryKey ? `, ${opts.libraryKey}` : ''}): ${docs.length} PDFs in scope`);
   if (!docs.length) return [];
   const byDoc = new Map(docs.map((d) => [d.docPk, d]));
 
   let sem = new Map<number, number>();
   let kw = new Map<number, number>();
   if (mode !== 'keyword') {
-    sem = await semanticScores(store, docs, query, prefs);
+    sem = await L.time('semantic (query embedding + scan)', () => semanticScores(store, docs, query, prefs), (m) => `${m.size} windows`);
     if (opts.minSimilarity !== undefined) for (const [id, s] of sem) if (s < opts.minSimilarity) sem.delete(id);
   }
-  if (mode !== 'semantic') kw = await keywordScores(store, docs, query);
+  if (mode !== 'semantic') kw = await L.time('keyword (BM25)', () => keywordScores(store, docs, query), (m) => `${m.size} windows`);
   const maxKw = Math.max(0, ...kw.values());
 
   const fused = mode === 'hybrid' ? rrf([ranked(sem, CANDIDATES), ranked(kw, CANDIDATES)]) : mode === 'semantic' ? sem : kw;
@@ -187,6 +192,7 @@ export async function search(store: Store, query: string, opts: SearchOptions = 
       },
     });
   }
+  L.info(`${out.length} passages in ${Date.now() - t0} ms`);
   return out;
 }
 

@@ -19,7 +19,9 @@ import { termKeys } from './text/tokenize';
 import type { Page } from './text/types';
 import { libraryIDOf, libraryKeyOf } from './zotero-items';
 import { readPrefs, type SeekBookPrefs } from '../prefs';
-import { log, logError } from '../util/log';
+import { log, logError, logger } from '../util/log';
+
+const L = logger('Indexer');
 
 export interface Progress {
   /** book_pk and attachment key being worked on, null when idle. */
@@ -406,7 +408,9 @@ export class Indexer {
     const libraryID = libraryIDOf(libraryKey);
     const att = libraryID === null ? null : Zotero.Items.getByLibraryAndKey(libraryID, d.attachmentKey);
     if (!att) throw new Error('attachment not found');
+    const t0 = Date.now();
     const pages = await readPages(att);
+    L.info(`${d.attachmentKey} "${d.attachmentTitle}": ${pages.length} pages read in ${Date.now() - t0} ms`);
     let structure: { outline: any[]; labels: (string | null)[] | null } = { outline: [], labels: null };
     try {
       structure = await readPdfStructure(att);
@@ -454,7 +458,9 @@ export class Indexer {
         this.emit();
       }
     };
+    const tEmbed = Date.now();
     await Promise.all(Array.from({ length: Math.min(prefs.embedConcurrency, batches.length) }, lane));
+    L.info(`${d.attachmentKey}: ${batches.length} embedding batches in ${Date.now() - tEmbed} ms (concurrency ${prefs.embedConcurrency})`);
     for (const r of results) vectors.push(...r);
     const chunks = p.windows.map((w, i) => {
       const keys = termKeys(`${w.chapter} ${w.text}`);
@@ -477,6 +483,6 @@ export class Indexer {
     });
     await this.store.setMeta('dims', String(vectors[0]?.length || 0));
     scanPool.invalidate(d.docPk);
-    log(`indexed ${d.attachmentKey}: ${chunks.length} windows, outline ${p.outline.source}`);
+    L.info(`indexed ${d.attachmentKey}: ${chunks.length} windows, outline ${p.outline.source}`);
   }
 }

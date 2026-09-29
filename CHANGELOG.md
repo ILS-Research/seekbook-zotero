@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1 – 2026-09-29
+- **Logging** like ZotSeek: `[SeekBook:<module>] [INFO] …` in the Browser Console and Zotero's debug output –
+  searches (query embedding + scan, keyword part, passages, total time), every REST request with status and time,
+  indexing per PDF (pages read, embedding batches, windows).
+- README rewritten for users (technical details at the end).
+
 ## 0.3.0 – 2026-09-29
 - **REST `/seekbook/books`**: books of a library (optionally `itemKeys`) with their document counts and whether they
   are searchable. SeekChat uses it to send indexed books to the index and the others to its keyword reading.

@@ -39,6 +39,7 @@ The host has no usable Node. **Everything runs in Docker** via the scripts (`doc
 | `src/ui/context-menu.ts`, `src/core/book-status.ts`, `locale/*/seekbook-main.ftl` | Item context menu for books (add, reindex, status); MenuManager on Zotero 8+, DOM fallback on 7; labels via Fluent |
 | `src/ui/status-window.ts`, `content/bookStatus.xhtml` | Live status window per book (indexer change events + 2 s poll, progress bar, Reindex) |
 | `src/ui/item-column.ts`, `src/core/book-state.ts` | Item tree column "SeekBook" (glyph per book from an in-memory state map, reloaded on indexer changes) |
+| `src/util/log.ts` | `logger(module)`: `[SeekBook:<module>] [LEVEL] …` to Browser Console + `Zotero.debug`, `time()` for durations (search, REST, indexer use it) |
 | `test/*.test.ts` | Unit tests (Node runner); `test/fixtures/seekchat-parse.ts` is a copy of SeekChat's `parseSearchResponse` |
 | `test/e2e/` | Harness + scenarios in real Zotero; `e2e/mock-embed.mjs` (hashed bag-of-words vectors, `/__fail` outage switch), `e2e/make-pdf.mjs` (fixtures) |
 
