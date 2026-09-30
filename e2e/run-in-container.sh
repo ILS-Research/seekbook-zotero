@@ -27,6 +27,8 @@ user_pref("extensions.zotero.seekbook.e2e.fixturesDir", "/fixtures");
 user_pref("extensions.zotero.seekbook.e2e.assetsDir", "/assets");
 user_pref("extensions.zotero.seekbook.locale", "de");
 user_pref("extensions.zotero.seekbook.model", "mock-embed");
+# Scenarios control indexing themselves (automatic indexing is on by default)
+user_pref("extensions.zotero.seekbook.autoIndex", false);
 user_pref("extensions.zotero.seekbook.baseUrl", "http://127.0.0.1:11434");
 PREFS
 

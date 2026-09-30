@@ -73,7 +73,7 @@ export function readPrefs(): SeekBookPrefs {
     cacheMB: int('cacheMB', 1024, 64, 16384),
     excludeTag: str('excludeTag', 'seekbook-exclude'),
     libraries: str('libraries').split(/[,\s]+/).filter(Boolean),
-    autoIndex: bool('autoIndex', false),
+    autoIndex: bool('autoIndex', true),
     preferDuplicates: str('preferDuplicates') === 'parts' ? 'parts' : 'whole',
     apiEnabled: bool('apiEnabled', true),
   };

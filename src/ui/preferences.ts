@@ -18,6 +18,8 @@ export interface PaneBackend {
   rebuild(): void;
   onChange(fn: () => void): () => void;
   apiChanged(): void;
+  /** Automatic indexing switched on or off: on starts indexing the whole library. */
+  autoIndexChanged(): void;
 }
 
 const TEXT_PREFS = ['baseUrl', 'apiKey', 'excludeTag', 'libraries', 'docPrefix'];
@@ -64,6 +66,7 @@ export function onPrefsLoad(win: Window, backend: PaneBackend): void {
     box.addEventListener('change', () => {
       setPref(key, box.checked);
       if (key === 'apiEnabled') backend.apiChanged();
+      if (key === 'autoIndex') backend.autoIndexChanged();
     });
   }
 

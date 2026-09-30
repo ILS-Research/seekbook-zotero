@@ -28,8 +28,9 @@ pref("extensions.zotero.seekbook.cacheMB", 1024);
 pref("extensions.zotero.seekbook.excludeTag", "seekbook-exclude");
 // Libraries to index: "" = all, else comma-separated library keys ("user", "group:123").
 pref("extensions.zotero.seekbook.libraries", "");
-// Index new or changed books automatically (decision E5: off by default because of server load).
-pref("extensions.zotero.seekbook.autoIndex", false);
+// Index automatically: the whole library shortly after Zotero starts (and when switched on), then new
+// or changed books. On by default in the ILS fork (decision E5 revised, see ideas-seekbook.md).
+pref("extensions.zotero.seekbook.autoIndex", true);
 // When a whole-book PDF contains a chapter PDF: "whole" keeps the whole book, "parts" keeps the chapters.
 pref("extensions.zotero.seekbook.preferDuplicates", "whole");
 // REST endpoints /seekbook/* on Zotero's local server for other plugins and agents.

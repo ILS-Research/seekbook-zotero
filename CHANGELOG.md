@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1 – 2026-09-30
+- **Automatic indexing on by default** and it now covers the **whole library**: about 20 s after Zotero starts
+  (and right when the option is switched on) SeekBook scans all books and indexes what is new or changed; after
+  that, new and changed books as before. Switch it off under Settings → SeekBook if the embedding server should
+  only be used on request ("Index now").
+
 ## 0.4.0 – 2026-09-29
 - **API key only over https**: with an API key, a server on another computer must be reached over `https://`;
   plain `http://` is refused before anything is sent (the key and the book text would travel readable). Loopback

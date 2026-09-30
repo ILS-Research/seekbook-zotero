@@ -23,6 +23,8 @@ const NOTIFY_DELAY_MS = 5000;
 
 /** How long shutdown waits for the PDF being indexed. */
 const SHUTDOWN_WAIT_MS = 30000;
+/** Automatic indexing of the whole library starts this long after startup, so Zotero starts undisturbed. */
+const STARTUP_INDEX_DELAY_MS = 20000;
 
 class SeekBookPlugin {
   readonly apiVersion = API_VERSION;
@@ -81,8 +83,11 @@ class SeekBookPlugin {
     } catch (e) {
       logError(e);
     }
-    // Resume an interrupted queue (status survives restarts).
-    if ((await this.store.queued()).length && readPrefs().model) void this.indexer.run();
+    // Automatic indexing: scan the whole library (new books, changed PDFs) a little later, then run the
+    // queue. Otherwise only resume an interrupted queue (status survives restarts).
+    if (readPrefs().autoIndex && readPrefs().model) {
+      void Zotero.Promise.delay(STARTUP_INDEX_DELAY_MS).then(() => this.autoIndexAll());
+    } else if ((await this.store.queued()).length && readPrefs().model) void this.indexer.run();
     log(`started ${info.version}`);
   }
 
@@ -214,6 +219,16 @@ class SeekBookPlugin {
     void this.column.reload();
   }
 
+  /** Indexes the whole library if automatic indexing is on and a model is set. */
+  async autoIndexAll(): Promise<void> {
+    if (this.stopped || !readPrefs().autoIndex || !readPrefs().model) return;
+    try {
+      await this.indexer.indexNow();
+    } catch (e) {
+      logError(e);
+    }
+  }
+
   async flushNotifications(): Promise<void> {
     if (this.stopped) return;
     const ids = Array.from(this.pendingItems);
@@ -267,6 +282,7 @@ class SeekBookPlugin {
       rebuild: () => void this.indexer.rebuild().catch(logError),
       onChange: (fn) => this.indexer.onChange(fn),
       apiChanged: () => this.applyApiPref(),
+      autoIndexChanged: () => void this.autoIndexAll(),
     });
   };
 

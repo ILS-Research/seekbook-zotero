@@ -312,6 +312,23 @@ export const scenarios: Scenario[] = [
     }
   }],
 
+  ['switching automatic indexing on indexes books added while it was off', async (ctx) => {
+    ctx.late = await newItem('book', 'Nachträglich indexiert');
+    ctx.latePdf = await attach(ctx, ctx.late, 'seekbook-other.pdf', 'Late');
+    await Zotero.Promise.delay(7000); // past the notifier delay (5 s)
+    assert(!(await doc(ctx.latePdf)), 'indexed although automatic indexing is off');
+    setPref('autoIndex', true);
+    try {
+      await plugin().autoIndexAll();
+      await waitFor('indexed after switching on', async () => (await statusOf(ctx.latePdf)) === 'ready', 30000);
+    } finally {
+      setPref('autoIndex', false);
+      // Later scenarios count the books
+      await ctx.late.eraseTx();
+      await waitFor('late book removed', async () => !(await plugin().store.bookByKey('user', ctx.late.key)), 20000);
+    }
+  }],
+
   ['model change ⇒ index kept until rebuild, then new dimensions', async (ctx) => {
     const before = (await api(PATHS.stats)).json;
     setPref('model', 'mock-embed-32');
