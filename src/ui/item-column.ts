@@ -20,7 +20,8 @@ export class ItemColumn {
   constructor(private store: Store, private currentBook: () => number | null) {}
 
   stateOf(item: any): BookState | null {
-    if (!item?.isRegularItem?.() || item.itemType !== 'book') return null;
+    if (!item?.isRegularItem?.()) return null;
+    if (item.itemType !== 'book' && !this.states.has(`${libraryKeyOf(item.libraryID)}/${item.key}`)) return null;
     return this.states.get(`${libraryKeyOf(item.libraryID)}/${item.key}`) ?? null;
   }
 

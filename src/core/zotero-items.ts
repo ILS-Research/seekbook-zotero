@@ -23,3 +23,11 @@ export function itemByKey(libraryKey: string, itemKey: string): any | null {
 export function isValidLibraryKey(key: string): boolean {
   return key === 'user' || /^group:\d+$/.test(key);
 }
+
+export function isPdf(att: any): boolean {
+  return att.isPDFAttachment ? att.isPDFAttachment() : att.attachmentContentType === 'application/pdf';
+}
+
+export function isFileAttachment(att: any): boolean {
+  return att.isFileAttachment ? att.isFileAttachment() : att.attachmentLinkMode !== Zotero.Attachments.LINK_MODE_LINKED_URL;
+}

@@ -2,6 +2,7 @@
  * SeekBook: full-text index for books in Zotero, served over a local REST API.
  * Entry point; bootstrap.js calls startup()/shutdown().
  */
+import { qualifies } from './core/eligibility';
 import { Indexer } from './core/indexer';
 import { API_VERSION, registerEndpoints, statsPayload, unregisterEndpoints } from './core/rest';
 import { search, scanPool, type SearchOptions } from './core/search';
@@ -152,7 +153,7 @@ class SeekBookPlugin {
       bookPk: book?.bookPk ?? null,
       booksAhead,
       excludedTag: !!tag && (item.getTags?.() || []).some((x: any) => x.tag === tag),
-      notABook: item.itemType !== 'book',
+      notABook: !book && (await qualifies(item, readPrefs().minPages)) === false,
     });
   }
 
@@ -243,7 +244,7 @@ class SeekBookPlugin {
       const lib = libraryKeyOf(book.libraryID);
       // Known books are always kept in sync (trash, removed PDF); new ones only with automatic indexing.
       const known = lib ? await this.store.bookByKey(lib, book.key) : null;
-      if (known || (readPrefs().autoIndex && book.itemType === 'book')) books.set(book.id, book);
+      if (known || (readPrefs().autoIndex && book.isRegularItem?.() && (book.itemType === 'book' || readPrefs().minPages > 0))) books.set(book.id, book);
     }
     if (!books.size) return;
     // Index built with other settings: leave it alone until the user rebuilds it.

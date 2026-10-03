@@ -23,7 +23,7 @@ export interface PaneBackend {
 }
 
 const TEXT_PREFS = ['baseUrl', 'apiKey', 'excludeTag', 'libraries', 'docPrefix'];
-const INT_PREFS = ['chunkWords', 'strideWords', 'batchSize', 'embedConcurrency', 'cacheMB'];
+const INT_PREFS = ['minPages', 'chunkWords', 'strideWords', 'batchSize', 'embedConcurrency', 'cacheMB'];
 
 export function onPrefsLoad(win: Window, backend: PaneBackend): void {
   const doc = win.document;

@@ -7,7 +7,9 @@
  * Zotero 8+ has Zotero.MenuManager (target "main/library/item"); Zotero 7 gets
  * the same entries added to #zotero-itemmenu directly.
  */
+import { qualifiesSync } from '../core/eligibility';
 import { libraryKeyOf } from '../core/zotero-items';
+import { readPrefs } from '../prefs';
 import { logError } from '../util/log';
 
 export const MENU_IDS = { add: 'seekbook-menu-add', reindex: 'seekbook-menu-reindex', info: 'seekbook-menu-info' };
@@ -28,7 +30,9 @@ function selectedItems(): any[] {
 }
 
 function books(items = selectedItems()): any[] {
-  return items.filter((i) => i?.isRegularItem?.() && i.itemType === 'book' && libraryKeyOf(i.libraryID));
+  // Books, items already in the index, and items whose page field reaches the threshold (sync check only).
+  return items.filter((i) => libraryKeyOf(i?.libraryID) && i?.isRegularItem?.()
+    && (actions?.isKnown(i) || qualifiesSync(i, readPrefs().minPages)));
 }
 
 export function menuState(items = selectedItems()): { add: boolean; reindex: boolean; info: boolean } {

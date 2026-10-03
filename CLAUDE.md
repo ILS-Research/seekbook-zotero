@@ -1,6 +1,6 @@
 # SeekBook (Zotero plugin)
 
-Full-text index for **books** (item type `book`, every PDF attachment) in Zotero 7–10: overlapping word windows,
+Full-text index for **books** (item type `book`, plus other items from `minPages` pages; every PDF attachment) in Zotero 7–10: overlapping word windows,
 embeddings from a self-hosted server (Ollama `/api/embed` or OpenAI-compatible `/v1/embeddings`) plus BM25, fused
 with RRF. No search UI of its own: other plugins (SeekChat, optionally ZotSeek) use the **REST API** on Zotero's
 local server. Plan and status: `../ideas-seekbook.md` (German) — keep it updated when scope or decisions change.

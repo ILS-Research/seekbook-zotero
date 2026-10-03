@@ -26,6 +26,9 @@ pref("extensions.zotero.seekbook.embedConcurrency", 2);
 pref("extensions.zotero.seekbook.cacheMB", 1024);
 // Tag on a book or a single attachment that keeps it out of the index.
 pref("extensions.zotero.seekbook.excludeTag", "seekbook-exclude");
+// Items that are not of type "book" are indexed like books from this many pages on (page field or
+// Zotero's full-text page count of a PDF); 0 = books only.
+pref("extensions.zotero.seekbook.minPages", 30);
 // Libraries to index: "" = all, else comma-separated library keys ("user", "group:123").
 pref("extensions.zotero.seekbook.libraries", "");
 // Index automatically: the whole library shortly after Zotero starts (and when switched on), then new

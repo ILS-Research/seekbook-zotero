@@ -20,6 +20,8 @@ export interface SeekBookPrefs {
   /** Memory for resident search vectors (MB). */
   cacheMB: number;
   excludeTag: string;
+  /** Items of other types with at least this many pages are indexed like books; 0 = books only. */
+  minPages: number;
   /** Library keys to index; empty = all. */
   libraries: string[];
   autoIndex: boolean;
@@ -72,6 +74,7 @@ export function readPrefs(): SeekBookPrefs {
     embedConcurrency: int('embedConcurrency', 2, 1, 8),
     cacheMB: int('cacheMB', 1024, 64, 16384),
     excludeTag: str('excludeTag', 'seekbook-exclude'),
+    minPages: int('minPages', 30, 0, 100000),
     libraries: str('libraries').split(/[,\s]+/).filter(Boolean),
     autoIndex: bool('autoIndex', true),
     preferDuplicates: str('preferDuplicates') === 'parts' ? 'parts' : 'whole',

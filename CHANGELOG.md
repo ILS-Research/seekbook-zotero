@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.0 – 2026-10-03
+- **Long documents count as books**: new setting "Index other items from (pages)" (`minPages`, default 30).
+  Items of any other type are indexed like books when their "# of Pages" field or a PDF's page count in
+  Zotero's full-text index reaches it; 0 = books only. An indexed item whose page count becomes unknown stays.
+
 ## 0.4.1 – 2026-09-30
 - **Automatic indexing on by default** and it now covers the **whole library**: about 20 s after Zotero starts
   (and right when the option is switched on) SeekBook scans all books and indexes what is new or changed; after

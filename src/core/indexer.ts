@@ -17,7 +17,8 @@ import {
 } from './text/prepare';
 import { termKeys } from './text/tokenize';
 import type { Page } from './text/types';
-import { libraryIDOf, libraryKeyOf } from './zotero-items';
+import { qualifies } from './eligibility';
+import { isFileAttachment, isPdf, libraryIDOf, libraryKeyOf } from './zotero-items';
 import { newAbortController } from '../util/env';
 import { readPrefs, type SeekBookPrefs } from '../prefs';
 import { log, logError, logger } from '../util/log';
@@ -64,14 +65,6 @@ export function modelId(p: SeekBookPrefs): string {
 
 function hasTag(item: any, tag: string): boolean {
   return !!tag && (item.getTags?.() || []).some((t: any) => t.tag === tag);
-}
-
-function isPdf(att: any): boolean {
-  return att.isPDFAttachment ? att.isPDFAttachment() : att.attachmentContentType === 'application/pdf';
-}
-
-function isFileAttachment(att: any): boolean {
-  return att.isFileAttachment ? att.isFileAttachment() : att.attachmentLinkMode !== Zotero.Attachments.LINK_MODE_LINKED_URL;
 }
 
 async function fileHash(path: string): Promise<string> {
@@ -196,7 +189,9 @@ export class Indexer {
     for (const libraryID of scope.ids) {
       const items: any[] = await Zotero.Items.getAll(libraryID, true, false);
       for (const item of items) {
-        if (!item.isRegularItem?.() || item.itemType !== 'book' || item.deleted) continue;
+        if (!item.isRegularItem?.() || item.deleted) continue;
+        // Cheap pre-filter: without a page threshold only books qualify.
+        if (item.itemType !== 'book' && this.prefs().minPages <= 0) continue;
         const bookPk = await this.syncBook(item);
         if (bookPk !== null) seen.add(bookPk);
       }
@@ -229,7 +224,9 @@ export class Indexer {
     const existing = await this.store.bookByKey(libraryKey, item.key);
     const scope = this.libraryScope();
     const outOfScope = !scope.ids.includes(item.libraryID) && !scope.unknown.length;
-    if (item.deleted || item.itemType !== 'book' || outOfScope) {
+    // Unknown page count (Zotero's full text cleared): an item indexed before stays.
+    const eligible = item.deleted ? false : await qualifies(item, prefs.minPages);
+    if (item.deleted || outOfScope || eligible === false || (eligible === null && !existing)) {
       if (existing) await this.removeBook(existing.bookPk);
       return null;
     }
