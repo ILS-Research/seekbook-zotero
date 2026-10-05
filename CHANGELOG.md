@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.0-rc.1 – 2026-10-05 (XPI version 1.0.0rc1)
+- **Local mode without a server:** new interface "Local with ZotSeek's model". SeekBook embeds with the model active
+  in ZotSeek (Nomic v1.5, MiniLM multilingual, Multilingual E5 base, BGE-M3, or a server model set up there), and
+  ZotSeek adds that model's prefixes. Needs the ZotSeek ILS fork 1.22.4.9+ with "Let other plugins use ZotSeek's
+  embedding models" switched on; a model switch in ZotSeek asks for a rebuilt index.
+- Both server interfaces stay (Ollama native, OpenAI-compatible); the tests now use the OpenAI-compatible one
+  (`/v1/models`, `/v1/embeddings`).
+- **Homepage and updates on gitlab.com** (https://gitlab.com/ils-research/zotero-plugins/seekbook-zotero): `update_url`
+  → `updates.json` in that repository; releases come from the CI on the tag (GitLab and GitHub Actions). The portal
+  still offers the download and updates older installations.
+- MIT license file; pre-release versions (`1.0.0-rc.1` in `package.json`, `1.0.0rc1` in the XPI).
+
 ## 0.5.0 – 2026-10-03
 - **Long documents count as books**: new setting "Index other items from (pages)" (`minPages`, default 30).
   Items of any other type are indexed like books when their "# of Pages" field or a PDF's page count in

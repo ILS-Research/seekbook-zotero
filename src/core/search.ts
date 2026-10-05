@@ -105,7 +105,7 @@ function inList(ids: number[]): string {
 }
 
 async function semanticScores(store: Store, docs: ScopeDoc[], query: string, prefs: SeekBookPrefs): Promise<Map<number, number>> {
-  const [vec] = await embed(prefs, [prefs.queryPrefix + query]);
+  const [vec] = await embed(prefs, [prefs.queryPrefix + query], { kind: 'query' });
   const q = normalize(vec);
   const candidates = (await scanPool.search(q, docs.map((d) => d.docPk), CANDIDATES, (pk) => loadDocVectors(store, pk)))
     .map((c) => c.id);

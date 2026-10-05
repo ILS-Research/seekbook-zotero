@@ -13,18 +13,20 @@ import { prepareDocument } from '../../src/core/text/prepare';
 import { setPref } from '../../src/prefs';
 import { menuState, onAdd, onReindex } from '../../src/ui/context-menu';
 import { parseSearchResponse } from '../fixtures/seekchat-parse';
-import { assert, screenshot, waitFor, type E2EContext } from './harness';
+import { assert, screenshot, SkipError, waitFor, type E2EContext } from './harness';
 
 type Scenario = [string, (ctx: E2EContext) => Promise<void>];
 
-const MOCK = 'http://127.0.0.1:11434';
+const MOCK_ROOT = 'http://127.0.0.1:11434';
+/** The tests talk to the mock through the OpenAI-compatible interface. */
+const MOCK = `${MOCK_ROOT}/v1`;
 
 function plugin(): any {
   return Zotero.SeekBook;
 }
 
 async function mock(path: string, method = 'GET'): Promise<any> {
-  const resp = await Zotero.getMainWindow().fetch(`${MOCK}${path}`, { method });
+  const resp = await Zotero.getMainWindow().fetch(`${MOCK_ROOT}${path}`, { method });
   return resp.json();
 }
 
@@ -375,7 +377,7 @@ export const scenarios: Scenario[] = [
     try {
       // Plain http to another computer with an API key: refused before anything is sent.
       setPref('allowedRemoteHosts', 'mock.example');
-      setPref('baseUrl', 'http://mock.example:11434');
+      setPref('baseUrl', 'http://mock.example:11434/v1');
       let err: any = null;
       try { await embed(cfg(), ['x'], { retries: 0 }); } catch (e) { err = e; }
       assert(err?.code === 'HOST_REJECTED' && /https/.test(err.message), `http + key: ${err}`);
@@ -383,7 +385,7 @@ export const scenarios: Scenario[] = [
       setPref('baseUrl', MOCK);
       assert((await embed(cfg(), ['x'], { retries: 0 }))[0].length > 0, 'loopback http with key');
       // Self-signed https: refused without the setting, works with it.
-      setPref('baseUrl', 'https://127.0.0.1:11435');
+      setPref('baseUrl', 'https://127.0.0.1:11435/v1');
       err = null;
       try { await embed(cfg(), ['x'], { retries: 0 }); } catch (e) { err = e; }
       assert(err && /not reachable/.test(err.message) && /invalid certificate/.test(err.message), `self-signed without setting: ${err}`);
@@ -432,7 +434,7 @@ export const scenarios: Scenario[] = [
       assert(/PDFs durchsuchbar/.test(prefsWin.document.getElementById('seekbook-counts').textContent), 'counts line');
       ctx.prefsCounts = counts;
       await screenshot(ctx, 'preferences', prefsWin);
-      // Connection test fills the model dropdown from /api/tags, embedding models first.
+      // Connection test fills the model dropdown from /v1/models, embedding models first.
       prefsWin.document.getElementById('seekbook-test').click();
       const status = await waitFor('connection test', () => {
         const el = prefsWin.document.getElementById('seekbook-test-status');
@@ -488,7 +490,9 @@ export const scenarios: Scenario[] = [
     win.Zotero_Tabs.select('zotero-pane');
     await win.ZoteroPane.collectionsView.selectLibrary(Zotero.Libraries.userLibraryID);
     await win.ZoteroPane.selectItems([book.id]);
-    assert((Zotero as any).MenuManager, 'MenuManager missing in Zotero 10');
+    // Zotero 8+: MenuManager; Zotero 7: the same entries added to the item menu (addLegacyMenu).
+    const major = parseInt(String(Zotero.version), 10);
+    assert(major < 8 || (Zotero as any).MenuManager, `MenuManager missing in Zotero ${Zotero.version}`);
     const popup = win.document.getElementById('zotero-itemmenu');
     popup.openPopup(null, 'overlap', 0, 0, true, false);
     const add = await waitFor('add entry', () => popup.querySelector('[data-l10n-id="seekbook-menu-add"]'), 5000);
@@ -598,7 +602,7 @@ export const scenarios: Scenario[] = [
         // Like the indexer: the queued document carries the hash the write is checked against.
         await store.setStatus(row.docPk, 'queued', { contentHash: `perf${d}` });
         const t0 = Date.now();
-        await store.writeDocument(row.docPk, `perf${d}`, 'ollama:mock-embed-4096', { chunks, pages: [], labels: null, outline: [], outlineSource: 'blocks', pageCount: 250 });
+        await store.writeDocument(row.docPk, `perf${d}`, 'openai:mock-embed-4096', { chunks, pages: [], labels: null, outline: [], outlineSource: 'blocks', pageCount: 250 });
         report.write.push(Date.now() - t0);
       }
       setPref('model', 'mock-embed-4096');
@@ -641,6 +645,69 @@ export const scenarios: Scenario[] = [
       setPref('model', 'mock-embed');
       for (const pk of bookPks) await store.deleteBook(pk);
       scanPool.invalidate();
+    }
+  }],
+
+  ['local mode: embeddings through ZotSeek\'s model (API stand-in), its prefixes, a model switch stops it', async () => {
+    const { embed, listModels } = await import('../../src/core/embed/client');
+    const { readPrefs, isConfigured } = await import('../../src/prefs');
+    const Z = Zotero as any;
+    const real = Z.ZotSeek;
+    const calls: { texts: string[]; kind: string }[] = [];
+    let model = { id: 'nomic-embed-text-v1.5', label: 'Nomic v1.5', dimensions: 4, runtime: 'onnx' };
+    // Stand-in with the API of the ZotSeek ILS fork 1.22.4.9 with the permission on (a real ZotSeek would load a 130 MB model here).
+    Z.ZotSeek = { ...(real || {}), api: { ...(real?.api || {}), embeddingModel: () => model, embed: async (texts: string[], kind: string) => {
+      calls.push({ texts, kind });
+      return texts.map((t, i) => [1, t.length % 7, i + 1, kind === 'query' ? 2 : 3]);
+    } } };
+    setPref('provider', 'zotseek');
+    setPref('queryPrefix', 'IGNORED: ');
+    try {
+      const prefs = readPrefs();
+      assert(prefs.model === 'nomic-embed-text-v1.5' && isConfigured(prefs) && prefs.queryPrefix === '' && prefs.docPrefix === '', JSON.stringify(prefs).slice(0, 300));
+      assert((await listModels(prefs)).join() === 'nomic-embed-text-v1.5', 'model list');
+      const [q] = await embed(prefs, ['Waermeinseln'], { kind: 'query' });
+      const docs = await embed(prefs, ['a', 'bb']);
+      assert(q.length === 4 && docs.length === 2, 'vectors');
+      assert(calls[0].kind === 'query' && calls[1].kind === 'doc' && calls[0].texts[0] === 'Waermeinseln', JSON.stringify(calls));
+      model = { ...model, id: 'bge-m3' };
+      let err: any = null;
+      try { await embed(prefs, ['x']); } catch (e) { err = e; }
+      assert(/rebuild the index/.test(String(err?.message)), `model switch: ${err}`);
+      Z.ZotSeek = undefined;
+      assert(!isConfigured(readPrefs()), 'without ZotSeek not configured');
+    } finally {
+      Z.ZotSeek = real;
+      setPref('provider', 'openai');
+      setPref('queryPrefix', '');
+    }
+  }],
+
+  ['local mode with the real ZotSeek: refused until allowed, then real vectors of its model (E2E_ZOTSEEK_XPI)', async () => {
+    const Z = Zotero as any;
+    if (!Z.ZotSeek) throw new SkipError('ZotSeek not installed in this run (E2E_ZOTSEEK_XPI)');
+    const { embed } = await import('../../src/core/embed/client');
+    const { readPrefs } = await import('../../src/prefs');
+    await waitFor('ZotSeek API', () => typeof Z.ZotSeek.api?.embed === 'function', 60000);
+    Zotero.Prefs.set('zotseek.pluginEmbedding.enabled', false, true);
+    setPref('provider', 'zotseek');
+    try {
+      assert(Z.ZotSeek.api.embeddingModel() === null && readPrefs().model === '', 'model visible without permission');
+      let err: any = null;
+      try { await Z.ZotSeek.api.embed(['x']); } catch (e) { err = e; }
+      assert(/may not use/.test(String(err?.message)), `embed without permission: ${err}`);
+      Zotero.Prefs.set('zotseek.pluginEmbedding.enabled', true, true);
+      const prefs = readPrefs();
+      const model = Z.ZotSeek.api.embeddingModel();
+      assert(prefs.model === model.id, `model ${prefs.model} vs ${model.id}`);
+      const [q] = await embed(prefs, ['Wärmeinseln in der Stadt'], { kind: 'query' });
+      const [d1, d2] = await embed(prefs, ['Städtische Wärmeinseln erhöhen die Temperatur.', 'Der Vulkan brach im Jahr 79 aus.']);
+      assert(q.length === model.dimensions && d1.length === model.dimensions, `dims ${q.length} / ${model.dimensions}`);
+      const cos = (a: number[], b: number[]) => a.reduce((n, x, i) => n + x * b[i], 0) / Math.hypot(...a) / Math.hypot(...b);
+      assert(cos(q, d1) > cos(q, d2), `related text not closer: ${cos(q, d1)} vs ${cos(q, d2)}`);
+    } finally {
+      Zotero.Prefs.set('zotseek.pluginEmbedding.enabled', false, true);
+      setPref('provider', 'openai');
     }
   }],
 ];

@@ -1,6 +1,21 @@
 /** Typed access to extensions.zotero.seekbook.* (defaults in prefs.js). */
 
-export type Provider = 'ollama' | 'openai';
+/** Embedding server: Ollama native, OpenAI-compatible, or local with ZotSeek's active model (no server). */
+export type Provider = 'ollama' | 'openai' | 'zotseek';
+
+/** ZotSeek's active embedding model ({id, label, dimensions}), or null without ZotSeek (or without its API). */
+export function zotseekModel(): { id: string; label: string; dimensions: number } | null {
+  try {
+    return (Zotero as any).ZotSeek?.api?.embeddingModel?.() ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Ready to embed: a server and a model, or ZotSeek's model in local mode. */
+export function isConfigured(p: Pick<SeekBookPrefs, 'provider' | 'baseUrl' | 'model'>): boolean {
+  return p.provider === 'zotseek' ? !!p.model : !!(p.baseUrl && p.model);
+}
 
 export interface SeekBookPrefs {
   provider: Provider;
@@ -58,14 +73,18 @@ function bool(key: string, fallback: boolean): boolean {
 
 export function readPrefs(): SeekBookPrefs {
   const chunkWords = int('chunkWords', 200, 40, 2000);
+  const p = str('provider');
+  const provider: Provider = p === 'openai' || p === 'zotseek' ? p : 'ollama';
+  // Local mode: ZotSeek's model, and ZotSeek adds that model's prefixes itself.
+  const local = provider === 'zotseek';
   return {
-    provider: str('provider') === 'openai' ? 'openai' : 'ollama',
+    provider,
     baseUrl: str('baseUrl'),
     apiKey: str('apiKey'),
-    model: str('model'),
+    model: local ? zotseekModel()?.id || '' : str('model'),
     // Prefixes keep their trailing space/newline.
-    queryPrefix: typeof getPref('queryPrefix') === 'string' ? getPref('queryPrefix') : '',
-    docPrefix: typeof getPref('docPrefix') === 'string' ? getPref('docPrefix') : '',
+    queryPrefix: !local && typeof getPref('queryPrefix') === 'string' ? getPref('queryPrefix') : '',
+    docPrefix: !local && typeof getPref('docPrefix') === 'string' ? getPref('docPrefix') : '',
     allowedRemoteHosts: str('allowedRemoteHosts'),
     allowInvalidCerts: bool('allowInvalidCerts', false),
     chunkWords,

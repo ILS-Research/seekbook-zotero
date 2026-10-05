@@ -12,7 +12,7 @@ import type { Indexer } from './indexer';
 import { search, type SearchMode, type SearchOptions } from './search';
 import type { Store } from './store';
 import { isValidLibraryKey } from './zotero-items';
-import { readPrefs } from '../prefs';
+import { isConfigured, readPrefs } from '../prefs';
 import { logger } from '../util/log';
 
 const L = logger('REST');
@@ -99,7 +99,7 @@ export function parsePageRange(value: string | null): [number, number] {
 export async function statsPayload(store: Store, indexer: Indexer): Promise<Record<string, unknown>> {
   const prefs = readPrefs();
   const c = await store.counts();
-  const configured = !!(prefs.baseUrl && prefs.model);
+  const configured = isConfigured(prefs);
   return {
     ready: (c.books || 0) > 0 && configured,
     indexedBooks: c.books || 0,
@@ -231,7 +231,7 @@ export function registerEndpoints(store: Store, indexer: Indexer): void {
     const prefs = readPrefs();
     const mode = opts.mode ?? 'hybrid';
     if ((await store.counts()).books === 0) throw new HttpError(503, 'not ready');
-    if (mode !== 'keyword' && !(prefs.baseUrl && prefs.model)) throw new HttpError(503, 'not ready');
+    if (mode !== 'keyword' && !isConfigured(prefs)) throw new HttpError(503, 'not ready');
     let results;
     try {
       results = await search(store, q, opts, prefs);

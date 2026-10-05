@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "description": "Full-text index (semantic + keyword) for books in Zotero, served to other plugins over a local REST API.",
   "author": "ILS",
+  "homepage_url": "https://gitlab.com/ils-research/zotero-plugins/seekbook-zotero",
   "icons": {
     "48": "content/icons/seekbook.svg",
     "96": "content/icons/seekbook.svg"
@@ -11,7 +12,7 @@
   "applications": {
     "zotero": {
       "id": "seekbook@ils-forschung.de",
-      "update_url": "https://zotero.ils.local/downloads/seekbook/updates.json",
+      "update_url": "https://gitlab.com/ils-research/zotero-plugins/seekbook-zotero/-/raw/master/updates.json",
       "strict_min_version": "7.0",
       "strict_max_version": "10.0.*"
     }

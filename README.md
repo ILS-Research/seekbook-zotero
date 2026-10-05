@@ -37,7 +37,11 @@ Works with Zotero 7, 8, 9 and 10 (recommended: 10). The embeddings come from a m
 **Settings → SeekBook**
 
 1. The status at the top shows how many books are indexed and what is waiting.
-2. Choose the embedding server (Ollama or OpenAI-compatible) and a model; a server that is not on your own computer
+2. Choose the embedding server (Ollama or OpenAI-compatible) and a model – or **Local with ZotSeek's model**: no
+   server, SeekBook then embeds with the model chosen in ZotSeek (Nomic v1.5, MiniLM multilingual, Multilingual E5,
+   BGE-M3). That needs the ILS fork of ZotSeek (1.22.4.9 or newer) with **Let other plugins use ZotSeek's embedding
+   models** switched on (Settings → ZotSeek → Integrations); it is slower than a server, and changing ZotSeek's model
+   means rebuilding the index. A server that is not on your own computer
    must be added to the **allowed remote hosts** – it receives the full text of all indexed books.
    With an **API key**, such a server must be reached over `https://`. If it has a self-signed or otherwise invalid
    certificate, tick **Accept invalid certificate** (an exception for that server until Zotero restarts).
@@ -65,6 +69,12 @@ Indexing (pages read, embedding batches, windows written), every search (query e
 passages found) and every request from other plugins are logged with their duration.
 
 ---
+
+## Issues and ideas
+
+Please report bugs and wishes as **work items on gitlab.com**:
+https://gitlab.com/ils-research/zotero-plugins/seekbook-zotero/-/work_items. Issues are switched off on the GitHub
+mirror; releases are published on both.
 
 ## For developers
 

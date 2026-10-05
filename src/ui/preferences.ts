@@ -110,7 +110,7 @@ export function onPrefsLoad(win: Window, backend: PaneBackend): void {
       fillModels(names);
       const prefs = readPrefs();
       if (!prefs.model) throw new Error(t('prefs.noModels'));
-      const [v] = await embed(prefs, [prefs.queryPrefix + 'test'], { retries: 0 });
+      const [v] = await embed(prefs, [prefs.queryPrefix + 'test'], { retries: 0, kind: 'query' });
       setText('test-status', t('prefs.testOk', { n: names.length, model: prefs.model, dims: v.length, ms: Date.now() - t0 }));
     } catch (e: any) {
       setText('test-status', t('prefs.error', { message: e?.message || e }));

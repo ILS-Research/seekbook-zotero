@@ -15,10 +15,15 @@ DOCKER=(docker)
 if ! docker info >/dev/null 2>&1; then DOCKER=(sudo docker); fi
 
 ./build.sh e2e
-"${DOCKER[@]}" build --progress=plain -t seekbook-e2e:latest e2e/
+"${DOCKER[@]}" build --progress=plain ${ZOTERO_VERSION:+--build-arg ZOTERO_VERSION="$ZOTERO_VERSION"} -t seekbook-e2e:latest e2e/
 mkdir -p e2e/out test/assets
 
-"${DOCKER[@]}" run --rm -u "$(id -u):$(id -g)" \
+# Optional: the real ZotSeek ILS fork for the local-mode scenario, e.g.
+#   E2E_ZOTSEEK_XPI=../zotero_selfhost_src/data/downloads/zotseek/zotseek-1.22.4.9-ils.xpi ./e2e/run.sh
+EXTRA=()
+[ -n "${E2E_ZOTSEEK_XPI:-}" ] && EXTRA+=(-v "$(realpath "$E2E_ZOTSEEK_XPI")":/zotseek.xpi:ro)
+
+"${DOCKER[@]}" run --rm -u "$(id -u):$(id -g)" "${EXTRA[@]}" \
   -v "$PWD/dist":/dist:ro -v "$PWD/e2e/out":/out \
   -v "$PWD/test/assets":/assets:ro \
   -e E2E_TIMEOUT="${E2E_TIMEOUT:-600}" \

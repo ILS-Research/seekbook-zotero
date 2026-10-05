@@ -31,6 +31,9 @@ const handler = async (req, res) => {
     res.end(JSON.stringify(data));
   };
   const url = new URL(req.url, 'http://x');
+  if (req.method === 'GET' && url.pathname === '/v1/models') {
+    return json(200, { object: 'list', data: ['llama3:8b', 'mock-embed', 'mock-embed-32'].map((id) => ({ id, object: 'model' })) });
+  }
   if (req.method === 'GET' && url.pathname === '/api/tags') {
     return json(200, { models: [{ name: 'llama3:8b' }, { name: 'mock-embed' }, { name: 'mock-embed-32' }] });
   }

@@ -11,6 +11,8 @@ PROFILE=$WORK/profile
 mkdir -p "$HOME" "$PROFILE/extensions" "$WORK/data" /out
 rm -f /out/results.json /out/screenshot-*.png
 cp "$XPI" "$PROFILE/extensions/seekbook@ils-forschung.de.xpi"
+# Optional real ZotSeek (E2E_ZOTSEEK_XPI in run.sh) for the local-mode scenario.
+[ -f /zotseek.xpi ] && cp /zotseek.xpi "$PROFILE/extensions/zotseek@zotero.org.xpi"
 
 cat > "$PROFILE/user.js" <<PREFS
 user_pref("extensions.autoDisableScopes", 0);
@@ -29,7 +31,9 @@ user_pref("extensions.zotero.seekbook.locale", "de");
 user_pref("extensions.zotero.seekbook.model", "mock-embed");
 # Scenarios control indexing themselves (automatic indexing is on by default)
 user_pref("extensions.zotero.seekbook.autoIndex", false);
-user_pref("extensions.zotero.seekbook.baseUrl", "http://127.0.0.1:11434");
+// The tests use the OpenAI-compatible interface (Ollama native stays selectable, unit-tested).
+user_pref("extensions.zotero.seekbook.provider", "openai");
+user_pref("extensions.zotero.seekbook.baseUrl", "http://127.0.0.1:11434/v1");
 PREFS
 
 # Trust the in-house CAs in Zotero (NSS database of the profile).

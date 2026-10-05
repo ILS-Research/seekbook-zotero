@@ -1,11 +1,12 @@
 /**
- * Embedding server client: Ollama native (POST /api/embed) or any
- * OpenAI-compatible server (POST /v1/embeddings). Every request passes the
- * host guard and is sent with redirect: 'error'.
+ * Embedding client: Ollama native (POST /api/embed), any OpenAI-compatible
+ * server (POST /v1/embeddings), or local without a server through ZotSeek's
+ * active model (Zotero.ZotSeek.api.embed, ZotSeek ILS fork 1.22.4.9+, only when its setting allows other plugins). Every
+ * server request passes the host guard and is sent with redirect: 'error'.
  */
 import { assertAllowedUrl, assertSecureTransport, parseAllowedHosts } from '../host-guard';
 import { prepareTls } from '../tls';
-import type { SeekBookPrefs } from '../../prefs';
+import { zotseekModel, type SeekBookPrefs } from '../../prefs';
 import { getFetch, newAbortController } from '../../util/env';
 
 export class EmbeddingError extends Error {
@@ -62,6 +63,23 @@ export interface EmbedOptions {
   sleep?: (ms: number) => Promise<void>;
   /** Per attempt; a server that does not answer in time counts as a retryable failure. */
   timeoutMs?: number;
+  /** Search query or document text: local mode lets ZotSeek add the model's matching prefix. */
+  kind?: 'query' | 'doc';
+}
+
+/** Local mode: the texts through ZotSeek's active model (it adds the model's prefix), checked like server vectors. */
+async function embedLocal(cfg: EmbeddingConfig, input: string[], opts: EmbedOptions): Promise<number[][]> {
+  const api = (Zotero as any).ZotSeek?.api;
+  if (typeof api?.embed !== 'function') {
+    throw new EmbeddingError('Local mode needs ZotSeek (ILS fork 1.22.4.9 or newer) with "Let other plugins use ZotSeek\'s embedding models" switched on (Settings → ZotSeek), or choose an embedding server');
+  }
+  const current = api.embeddingModel?.()?.id;
+  // ZotSeek's model was switched since SeekBook read it: these vectors would not match the index.
+  if (current !== cfg.model) throw new EmbeddingError(`ZotSeek's model changed (${cfg.model} → ${current}): rebuild the index`);
+  if (opts.signal?.aborted) throw abortError();
+  const vectors = await api.embed(input, opts.kind ?? 'doc');
+  if (opts.signal?.aborted) throw abortError();
+  return parseEmbedResponse({ embeddings: vectors }, input.length);
 }
 
 /** Long enough for a cold model load on a busy server, short enough that stop/shutdown do not hang. */
@@ -117,7 +135,8 @@ async function post(url: string, init: Record<string, unknown>, timeoutMs: numbe
 
 export async function embed(cfg: EmbeddingConfig, input: string[], opts: EmbedOptions = {}): Promise<number[][]> {
   if (!input.length) return [];
-  if (!cfg.model) throw new EmbeddingError('No embedding model set (Settings → SeekBook)');
+  if (!cfg.model) throw new EmbeddingError(cfg.provider === 'zotseek' ? 'Local mode: ZotSeek is not installed, not started, or does not let other plugins use its models (Settings → ZotSeek)' : 'No embedding model set (Settings → SeekBook)');
+  if (cfg.provider === 'zotseek') return embedLocal(cfg, input, opts);
   const url = embedUrl(cfg);
   await checkedUrl(cfg, url);
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -166,6 +185,11 @@ export function parseModelList(json: any): string[] {
 
 /** Models on the server (GET /api/tags or /models), same as in SeekChat. */
 export async function listModels(cfg: Omit<EmbeddingConfig, 'model'>): Promise<string[]> {
+  if (cfg.provider === 'zotseek') {
+    const m = zotseekModel();
+    if (!m) throw new EmbeddingError('Local mode needs ZotSeek (ILS fork 1.22.4.9 or newer) with "Let other plugins use ZotSeek\'s embedding models" switched on');
+    return [m.id];
+  }
   const base = cfg.baseUrl.replace(/\/+$/, '');
   const url = cfg.provider === 'openai' ? `${base}/models` : `${base}/api/tags`;
   await checkedUrl(cfg, url);
