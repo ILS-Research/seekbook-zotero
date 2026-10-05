@@ -15,14 +15,15 @@ The host has no usable Node. **Everything runs in Docker** via the scripts (`doc
 | Deps, unit tests, typecheck, build, `dist/seekbook-<v>.xpi` | `./build.sh` | `logs/build.log` |
 | Unit tests only | `./build.sh test` | `logs/build.log` |
 | E2E run (real Zotero 10.0.3 under Xvfb + mock embedding server) | `./e2e/run.sh` | `logs/e2e.log`, `e2e/out/` |
-| Publish built xpi to the portal downloads | `scripts/publish.py ../zotero_selfhost_src/data/downloads` | |
+| Portal: copy `updates.json` (gitlab.com links) for installations from before 1.0.0rc1 | `scripts/publish.py ../zotero_selfhost_src/data/downloads` | |
 | Add the version to `updates.json` (release itself: CI on the tag) | `scripts/publish-gitlab.py` | |
 
 - Run scripts with output discarded and read the log tail: `./e2e/run.sh >/dev/null 2>&1; tail -20 logs/e2e.log`.
 - Version only in `package.json`; `manifest.json` keeps `0.0.0` and is stamped at build.
 - Since 1.0.0rc1 like SeekChat: `homepage_url` → gitlab.com project, `update_url` → raw `updates.json` on its `master`.
   Release: `scripts/publish-gitlab.py`, commit, tag `vX.Y.Z[-rc.N]`, push `master` + tag to `gitlab` and `github`
-  (`.gitlab-ci.yml` and `.github/workflows/ci.yml` test and release); `scripts/publish.py` still fills the portal.
+  (`.gitlab-ci.yml` and `.github/workflows/ci.yml` test and release); `scripts/publish.py` only copies `updates.json` to the portal (no
+  xpi mirror; the download page links gitlab.com's `-/releases/permalink/latest`).
   Pre-releases: `1.0.0-rc.N` in `package.json`, `1.0.0rcN` in the XPI. `ZOTERO_VERSION=… ./e2e/run.sh` picks Zotero.
 - Local mode (`provider` `zotseek`): embeddings through `Zotero.ZotSeek.api.embed(texts, kind)` of the ZotSeek ILS fork
   (1.22.4.9+, only with its opt-in `zotseek.pluginEmbedding.enabled`); model = ZotSeek's active model id, SeekBook's
