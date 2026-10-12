@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.0-rc.3 – 2026-10-12 (XPI version 1.0.0rc3)
+- **User name for the usage statistics:** with `ollama.ils.local` as OpenAI-compatible embedding server, the Zotero
+  account name goes into the `user` field of the embeddings request (LiteLLM shows it as `end_user`). New setting
+  (default on); off: only the SHA-256 hash is sent. Other hosts and interfaces get nothing. Same rule as SeekChatZot.
+- Settings: checkbox rows put the checkbox next to its text.
+
 ## 1.0.0-rc.2 – 2026-10-12 (XPI version 1.0.0rc2)
 - **OpenAI-compatible interface is the default** (`/v1/embeddings`, server `https://ollama.ils.local/v1`).
 - **Forced move:** an installation with native Ollama (`/api/embed`) on `ollama.ils.local` is switched to the

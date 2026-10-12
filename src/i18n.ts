@@ -22,6 +22,7 @@ const EN = {
   'prefs.notEmbedding': '(no embedding model?)',
   'prefs.error': 'Error: {message}',
   'prefs.allowInvalidCerts': 'Accept invalid certificate (self-signed, expired, other name)',
+  'prefs.sendUserName': 'Send my user name to the embedding server for usage statistics (off: only a hash; ollama.ils.local only)',
   'prefs.httpsHelp': 'With an API key, a server on another computer must be reached over https://, so the key and the book ' +
     'text are encrypted on the way. "Accept invalid certificate" adds an exception for that server until Zotero restarts; ' +
     'the connection stays encrypted, but SeekBook no longer checks who is at the other end.',
@@ -126,6 +127,7 @@ const DE: Record<Key, string> = {
   'prefs.notEmbedding': '(kein Embedding-Modell?)',
   'prefs.error': 'Fehler: {message}',
   'prefs.allowInvalidCerts': 'Ungültiges Zertifikat akzeptieren (selbstsigniert, abgelaufen, anderer Name)',
+  'prefs.sendUserName': 'Meinen Nutzernamen für die Nutzungsstatistik an den Embedding-Server senden (aus: nur ein Hash; nur bei ollama.ils.local)',
   'prefs.httpsHelp': 'Mit API-Key muss ein Server auf einem anderen Rechner per https:// angesprochen werden, damit Key und ' +
     'Buchtext verschlüsselt übertragen werden. „Ungültiges Zertifikat akzeptieren“ legt für diesen Server eine Ausnahme ' +
     'bis zum Neustart von Zotero an; die Verbindung bleibt verschlüsselt, aber SeekBook prüft nicht mehr, wer am anderen Ende ist.',

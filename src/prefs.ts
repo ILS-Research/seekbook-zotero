@@ -27,6 +27,8 @@ export interface SeekBookPrefs {
   allowedRemoteHosts: string;
   /** https servers with an invalid (e.g. self-signed) certificate are accepted. */
   allowInvalidCerts: boolean;
+  /** User name as `user` in embedding requests (default); off: only its hash. ollama.ils.local only. */
+  sendUserName: boolean;
   chunkWords: number;
   strideWords: number;
   batchSize: number;
@@ -87,6 +89,7 @@ export function readPrefs(): SeekBookPrefs {
     docPrefix: !local && typeof getPref('docPrefix') === 'string' ? getPref('docPrefix') : '',
     allowedRemoteHosts: str('allowedRemoteHosts'),
     allowInvalidCerts: bool('allowInvalidCerts', false),
+    sendUserName: bool('sendUserName', true),
     chunkWords,
     strideWords: Math.min(chunkWords, int('strideWords', 120, 10, 2000)),
     batchSize: int('batchSize', 32, 1, 256),

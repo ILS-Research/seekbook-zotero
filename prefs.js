@@ -17,6 +17,8 @@ pref("extensions.zotero.seekbook.allowedRemoteHosts", "");
 // With an API key, remote servers must use https. For a self-signed or otherwise invalid certificate of such a
 // server, a certificate exception can be added for the session.
 pref("extensions.zotero.seekbook.allowInvalidCerts", false);
+// User name as plain text in `user` (statistics); off: SHA-256 hash only. Only used with ollama.ils.local.
+pref("extensions.zotero.seekbook.sendUserName", true);
 // Windows: words per window and step between window starts (changing either rebuilds the index).
 pref("extensions.zotero.seekbook.chunkWords", 200);
 pref("extensions.zotero.seekbook.strideWords", 120);

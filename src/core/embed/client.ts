@@ -4,6 +4,7 @@
  * active model (Zotero.ZotSeek.api.embed, ZotSeek ILS fork 1.22.4.9+, only when its setting allows other plugins). Every
  * server request passes the host guard and is sent with redirect: 'error'.
  */
+import { currentUserName, endUserValue, isStatsHost } from './end-user';
 import { assertAllowedUrl, assertSecureTransport, parseAllowedHosts } from '../host-guard';
 import { prepareTls } from '../tls';
 import { zotseekModel, type SeekBookPrefs } from '../../prefs';
@@ -17,7 +18,7 @@ export class EmbeddingError extends Error {
 }
 
 export type EmbeddingConfig = Pick<SeekBookPrefs, 'provider' | 'baseUrl' | 'apiKey' | 'model' | 'allowedRemoteHosts'>
-  & Partial<Pick<SeekBookPrefs, 'allowInvalidCerts'>>;
+  & Partial<Pick<SeekBookPrefs, 'allowInvalidCerts' | 'sendUserName'>>;
 
 /** Host guard, https for API keys, certificate exception: everything before a request to the server. */
 async function checkedUrl(cfg: Omit<EmbeddingConfig, 'model'>, url: string): Promise<void> {
@@ -31,9 +32,10 @@ export function embedUrl(cfg: EmbeddingConfig): string {
   return cfg.provider === 'openai' ? `${base}/embeddings` : `${base}/api/embed`;
 }
 
-export function embedBody(cfg: EmbeddingConfig, input: string[]): Record<string, unknown> {
+export function embedBody(cfg: EmbeddingConfig, input: string[], user?: string): Record<string, unknown> {
   // Ollama: no truncation of long inputs is better than a silent cut; windows are short anyway.
-  return cfg.provider === 'openai' ? { model: cfg.model, input } : { model: cfg.model, input, truncate: true };
+  if (cfg.provider !== 'openai') return { model: cfg.model, input, truncate: true };
+  return user ? { model: cfg.model, input, user } : { model: cfg.model, input };
 }
 
 /** Vectors from either response shape, in input order. */
@@ -139,6 +141,9 @@ export async function embed(cfg: EmbeddingConfig, input: string[], opts: EmbedOp
   if (cfg.provider === 'zotseek') return embedLocal(cfg, input, opts);
   const url = embedUrl(cfg);
   await checkedUrl(cfg, url);
+  // Usage statistics of the ILS server: the user name (plain, or hashed when the option is off); other hosts get nothing.
+  const user = cfg.provider === 'openai' && isStatsHost(cfg.baseUrl)
+    ? await endUserValue(currentUserName(), cfg.sendUserName !== false) : undefined;
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`;
   const retries = opts.retries ?? 3;
@@ -148,7 +153,7 @@ export async function embed(cfg: EmbeddingConfig, input: string[], opts: EmbedOp
     if (attempt) await sleep((opts.backoffMs ?? 1000) * 2 ** (attempt - 1));
     if (opts.signal?.aborted) break;
     try {
-      const json = await post(url, { method: 'POST', headers, body: JSON.stringify(embedBody(cfg, input)), redirect: 'error' },
+      const json = await post(url, { method: 'POST', headers, body: JSON.stringify(embedBody(cfg, input, user)), redirect: 'error' },
         opts.timeoutMs ?? EMBED_TIMEOUT_MS, opts.signal);
       return parseEmbedResponse(json, input.length);
     } catch (e: any) {

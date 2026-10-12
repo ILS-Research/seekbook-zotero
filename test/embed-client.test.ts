@@ -97,3 +97,14 @@ test('migratedEmbeddingServer: ollama.ils.local moves to the OpenAI interface', 
   assert.equal(migratedEmbeddingServer('zotseek', 'https://ollama.ils.local'), null);
   assert.equal(migratedEmbeddingServer('ollama', 'http://127.0.0.1:11434'), null);
 });
+
+test('embedding body: `user` only with a name, plain or hashed', async () => {
+  const { endUserValue, isStatsHost } = await import('../src/core/embed/end-user');
+  const open = { ...cfg, provider: 'openai' as const };
+  assert.deepEqual(embedBody(open, ['a'], 'Jane'), { model: cfg.model, input: ['a'], user: 'Jane' });
+  assert.deepEqual(embedBody(open, ['a']), { model: cfg.model, input: ['a'] });
+  assert.ok(!('user' in embedBody(cfg, ['a'], 'Jane')), 'native Ollama gets no user');
+  assert.equal(isStatsHost('https://ollama.ils.local/v1'), true);
+  assert.equal(isStatsHost('http://127.0.0.1:11434'), false);
+  assert.match((await endUserValue('Jane', false))!, /^[0-9a-f]{64}$/);
+});

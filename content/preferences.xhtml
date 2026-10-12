@@ -3,6 +3,8 @@
       onload="Zotero.SeekBook?.onPrefsLoad(window)">
 <html:style>
   #seekbook-preferences .row { display: grid; grid-template-columns: 200px 1fr; gap: 6px 10px; align-items: center; max-width: 660px; }
+  #seekbook-preferences .row label:has(> input[type=checkbox]) { display: flex; align-items: flex-start; gap: 8px; }
+  #seekbook-preferences .row input[type=checkbox] { width: auto; margin: 2px 0 0; flex: none; }
   #seekbook-preferences .row input, #seekbook-preferences .row select, #seekbook-preferences .row textarea { width: 100%; box-sizing: border-box; font: inherit; }
   #seekbook-preferences .help { font-size: 11px; color: var(--fill-secondary); margin: 2px 0 8px 0; max-width: 660px; }
   #seekbook-preferences .danger { margin-top: 10px; padding: 8px; border: 1px solid #c62828; border-radius: 4px; max-width: 660px; }
@@ -89,6 +91,8 @@
     <html:input id="seekbook-apiKey" type="password"/>
     <html:span></html:span>
     <html:label><html:input id="seekbook-allowInvalidCerts" type="checkbox"/> <html:span data-i18n="prefs.allowInvalidCerts">Accept invalid certificate</html:span></html:label>
+    <html:span></html:span>
+    <html:label><html:input id="seekbook-sendUserName" type="checkbox"/> <html:span data-i18n="prefs.sendUserName">Send my user name for usage statistics</html:span></html:label>
     <html:label for="seekbook-model" data-i18n="prefs.model">Model</html:label>
     <html:select id="seekbook-model"/>
     <html:label for="seekbook-queryPrefix" data-i18n="prefs.queryPrefix">Query prefix</html:label>

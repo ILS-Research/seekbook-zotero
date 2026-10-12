@@ -59,7 +59,7 @@ export function onPrefsLoad(win: Window, backend: PaneBackend): void {
       if (Number.isFinite(v)) setPref(key, v);
     });
   }
-  for (const key of ['autoIndex', 'apiEnabled', 'allowInvalidCerts']) {
+  for (const key of ['autoIndex', 'apiEnabled', 'allowInvalidCerts', 'sendUserName']) {
     const box = $<HTMLInputElement>(key);
     if (!box) continue;
     box.checked = !!getPref(key);
