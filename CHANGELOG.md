@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.0-rc.2 – 2026-10-12 (XPI version 1.0.0rc2)
+- **OpenAI-compatible interface is the default** (`/v1/embeddings`, server `https://ollama.ils.local/v1`).
+- **Forced move:** an installation with native Ollama (`/api/embed`) on `ollama.ils.local` is switched to the
+  OpenAI-compatible interface at startup; a bare address (any scheme or port) gets `/v1`. Other servers and the local
+  ZotSeek mode stay as they are.
+
 ## 1.0.0-rc.1 – 2026-10-05 (XPI version 1.0.0rc1)
 - **Local mode without a server:** new interface "Local with ZotSeek's model". SeekBook embeds with the model active
   in ZotSeek (Nomic v1.5, MiniLM multilingual, Multilingual E5 base, BGE-M3, or a server model set up there), and

@@ -74,7 +74,7 @@ function bool(key: string, fallback: boolean): boolean {
 export function readPrefs(): SeekBookPrefs {
   const chunkWords = int('chunkWords', 200, 40, 2000);
   const p = str('provider');
-  const provider: Provider = p === 'openai' || p === 'zotseek' ? p : 'ollama';
+  const provider: Provider = p === 'ollama' || p === 'zotseek' ? p : 'openai';
   // Local mode: ZotSeek's model, and ZotSeek adds that model's prefixes itself.
   const local = provider === 'zotseek';
   return {
@@ -99,4 +99,31 @@ export function readPrefs(): SeekBookPrefs {
     preferDuplicates: str('preferDuplicates') === 'parts' ? 'parts' : 'whole',
     apiEnabled: bool('apiEnabled', true),
   };
+}
+
+const ILS_HOST = 'ollama.ils.local';
+export const ILS_ENDPOINT = `https://${ILS_HOST}/v1`;
+
+/**
+ * Forced move of ollama.ils.local to the OpenAI interface: native Ollama (or an unset interface) with that host
+ * becomes "openai"; a bare address gets /v1 (any scheme or port). null: nothing to change.
+ */
+export function migratedEmbeddingServer(provider: string, baseUrl: string): { provider: 'openai'; baseUrl: string } | null {
+  if (provider === 'openai' || provider === 'zotseek') return null;
+  try {
+    const u = new URL(baseUrl.trim());
+    if (u.hostname.toLowerCase() !== ILS_HOST || u.username || u.password) return null;
+    const bare = u.pathname.replace(/\/+$/, '') === '';
+    return { provider: 'openai', baseUrl: bare ? ILS_ENDPOINT : baseUrl.trim() };
+  } catch {
+    return null;
+  }
+}
+
+/** Applies migratedEmbeddingServer to the stored prefs (at startup). */
+export function migrateEmbeddingServer(): void {
+  const next = migratedEmbeddingServer(str('provider', 'ollama'), str('baseUrl'));
+  if (!next) return;
+  setPref('provider', next.provider);
+  setPref('baseUrl', next.baseUrl);
 }

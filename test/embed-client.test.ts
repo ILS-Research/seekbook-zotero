@@ -86,3 +86,14 @@ test('aborting the signal ends a hanging request at once, without retries', asyn
     globalThis.fetch = orig;
   }
 });
+
+test('migratedEmbeddingServer: ollama.ils.local moves to the OpenAI interface', async () => {
+  const { migratedEmbeddingServer } = await import('../src/prefs');
+  const v1 = 'https://ollama.ils.local/v1';
+  assert.deepEqual(migratedEmbeddingServer('ollama', 'http://ollama.ils.local:11434'), { provider: 'openai', baseUrl: v1 });
+  assert.deepEqual(migratedEmbeddingServer('ollama', 'https://ollama.ils.local/'), { provider: 'openai', baseUrl: v1 });
+  assert.deepEqual(migratedEmbeddingServer('ollama', 'https://ollama.ils.local/v1'), { provider: 'openai', baseUrl: v1 });
+  assert.equal(migratedEmbeddingServer('openai', 'https://ollama.ils.local'), null);
+  assert.equal(migratedEmbeddingServer('zotseek', 'https://ollama.ils.local'), null);
+  assert.equal(migratedEmbeddingServer('ollama', 'http://127.0.0.1:11434'), null);
+});

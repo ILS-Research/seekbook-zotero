@@ -8,7 +8,7 @@ import { API_VERSION, registerEndpoints, statsPayload, unregisterEndpoints } fro
 import { search, scanPool, type SearchOptions } from './core/search';
 import { Store } from './core/store';
 import { libraryKeyOf } from './core/zotero-items';
-import { readPrefs } from './prefs';
+import { migrateEmbeddingServer, readPrefs } from './prefs';
 import { onPrefsLoad } from './ui/preferences';
 import { addLegacyMenu, registerMenus, removeLegacyMenu, unregisterMenus } from './ui/context-menu';
 import { formatBookStatus } from './core/book-status';
@@ -58,6 +58,11 @@ class SeekBookPlugin {
 
   async startup(info: { id: string; version: string; rootURI: string }): Promise<void> {
     this.info = info;
+    try {
+      migrateEmbeddingServer();
+    } catch (e) {
+      logError(e);
+    }
     this.stopped = false;
     await this.store.open();
     scanPool.setLimitMB(readPrefs().cacheMB);

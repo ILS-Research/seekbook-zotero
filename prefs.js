@@ -1,9 +1,10 @@
 // SeekBook default preferences (extensions.zotero.seekbook.*).
 
-// Embedding server. "ollama" (native /api/embed) or "openai" (any OpenAI-compatible /v1/embeddings).
-pref("extensions.zotero.seekbook.provider", "ollama");
-// Ollama: server root, e.g. https://ollama.example.local; OpenAI-compatible: base including /v1.
-pref("extensions.zotero.seekbook.baseUrl", "http://127.0.0.1:11434");
+// Embedding server. "openai" (any OpenAI-compatible /v1/embeddings, default), "ollama" (native /api/embed) or
+// "zotseek" (local, no server). Installations with the bare ollama.ils.local are moved to "openai" at startup.
+pref("extensions.zotero.seekbook.provider", "openai");
+// OpenAI-compatible: base including /v1; Ollama native: server root, e.g. https://ollama.example.local.
+pref("extensions.zotero.seekbook.baseUrl", "https://ollama.ils.local/v1");
 pref("extensions.zotero.seekbook.apiKey", "");
 // Decision E1 (28.09.2026): qwen3-embedding, full dimension, no truncation.
 pref("extensions.zotero.seekbook.model", "qwen3-embedding:8b");
