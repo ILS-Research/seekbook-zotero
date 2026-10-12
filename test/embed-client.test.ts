@@ -108,3 +108,21 @@ test('embedding body: `user` only with a name, plain or hashed', async () => {
   assert.equal(isStatsHost('http://127.0.0.1:11434'), false);
   assert.match((await endUserValue('Jane', false))!, /^[0-9a-f]{64}$/);
 });
+
+test('User-Agent names SeekBook once the version is set', async () => {
+  const { setUserAgent } = await import('../src/core/embed/client');
+  const orig = globalThis.fetch;
+  let ua = '';
+  globalThis.fetch = (async (_url: string, init: any) => {
+    ua = init.headers['User-Agent'];
+    return new Response(JSON.stringify({ embeddings: [[0.1, 0.2]] }));
+  }) as any;
+  setUserAgent('1.2.3');
+  try {
+    await embed(cfg, ['x']);
+    assert.equal(ua, 'SeekBook/1.2.3');
+  } finally {
+    setUserAgent('');
+    globalThis.fetch = orig;
+  }
+});

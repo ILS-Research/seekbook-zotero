@@ -4,6 +4,7 @@
  */
 import { qualifies } from './core/eligibility';
 import { Indexer } from './core/indexer';
+import { setUserAgent } from './core/embed/client';
 import { API_VERSION, registerEndpoints, statsPayload, unregisterEndpoints } from './core/rest';
 import { search, scanPool, type SearchOptions } from './core/search';
 import { Store } from './core/store';
@@ -58,6 +59,7 @@ class SeekBookPlugin {
 
   async startup(info: { id: string; version: string; rootURI: string }): Promise<void> {
     this.info = info;
+    setUserAgent(info.version);
     try {
       migrateEmbeddingServer();
     } catch (e) {

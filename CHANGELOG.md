@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.0-rc.4 – 2026-10-12 (XPI version 1.0.0rc4)
+- **Server log:** embedding requests carry `User-Agent: SeekBook/<version>` instead of Zotero's own, so the log shows
+  where they come from.
+
 ## 1.0.0-rc.3 – 2026-10-12 (XPI version 1.0.0rc3)
 - **User name for the usage statistics:** with `ollama.ils.local` as OpenAI-compatible embedding server, the Zotero
   account name goes into the `user` field of the embeddings request (LiteLLM shows it as `end_user`). New setting

@@ -135,6 +135,13 @@ async function post(url: string, init: Record<string, unknown>, timeoutMs: numbe
   }
 }
 
+let userAgent = '';
+
+/** "SeekBook/<version>" as User-Agent, so the server log shows who asked (otherwise: Zotero's own). */
+export function setUserAgent(version: string): void {
+  userAgent = version ? `SeekBook/${version}` : '';
+}
+
 export async function embed(cfg: EmbeddingConfig, input: string[], opts: EmbedOptions = {}): Promise<number[][]> {
   if (!input.length) return [];
   if (!cfg.model) throw new EmbeddingError(cfg.provider === 'zotseek' ? 'Local mode: ZotSeek is not installed, not started, or does not let other plugins use its models (Settings → ZotSeek)' : 'No embedding model set (Settings → SeekBook)');
@@ -145,6 +152,7 @@ export async function embed(cfg: EmbeddingConfig, input: string[], opts: EmbedOp
   const user = cfg.provider === 'openai' && isStatsHost(cfg.baseUrl)
     ? await endUserValue(currentUserName(), cfg.sendUserName !== false) : undefined;
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (userAgent) headers['User-Agent'] = userAgent;
   if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`;
   const retries = opts.retries ?? 3;
   const sleep = opts.sleep ?? ((ms: number) => Zotero.Promise.delay(ms));
