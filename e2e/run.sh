@@ -5,6 +5,14 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# ZOTERO_VERSION: default = current release; "all" = newest build of every major (7 … current), one run each.
+if [ "${ZOTERO_VERSION:-}" = all ]; then
+  rc=0
+  for v in $(e2e/zotero-versions.sh); do ZOTERO_VERSION=$v "$0" "$@" || rc=1; done
+  exit $rc
+fi
+ZOTERO_VERSION=${ZOTERO_VERSION:-$(e2e/zotero-versions.sh latest)}
+
 # Full output of every run goes to logs/e2e.log (line-buffered via tee),
 # so a long build can be followed with `tail -f logs/e2e.log`.
 mkdir -p logs

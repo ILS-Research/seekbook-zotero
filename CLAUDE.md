@@ -14,7 +14,7 @@ The host has no usable Node. **Everything runs in Docker** via the scripts (`doc
 |---|---|---|
 | Deps, unit tests, typecheck, build, `dist/seekbook-<v>.xpi` | `./build.sh` | `logs/build.log` |
 | Unit tests only | `./build.sh test` | `logs/build.log` |
-| E2E run (real Zotero 10.0.3 under Xvfb + mock embedding server) | `./e2e/run.sh` | `logs/e2e.log`, `e2e/out/` |
+| E2E run (real Zotero, current release by default, under Xvfb + mock embedding server) | `./e2e/run.sh` | `logs/e2e.log`, `e2e/out/` |
 | Portal: copy `updates.json` (gitlab.com links) for installations from before 1.0.0rc1 | `scripts/publish.py ../zotero_selfhost_src/data/downloads` | |
 | Add the version to `updates.json` (release itself: CI on the tag) | `scripts/publish-gitlab.py` | |
 
@@ -24,7 +24,7 @@ The host has no usable Node. **Everything runs in Docker** via the scripts (`doc
   Release: `scripts/publish-gitlab.py`, commit, tag `vX.Y.Z[-rc.N]`, push `master` + tag to `gitlab` and `github`
   (`.gitlab-ci.yml` and `.github/workflows/ci.yml` test and release); `scripts/publish.py` only copies `updates.json` to the portal (no
   xpi mirror; the download page links gitlab.com's `-/releases/permalink/latest`).
-  Pre-releases: `1.0.0-rc.N` in `package.json`, `1.0.0rcN` in the XPI. `ZOTERO_VERSION=… ./e2e/run.sh` picks Zotero.
+  Pre-releases: `1.0.0-rc.N` in `package.json`, `1.0.0rcN` in the XPI. `ZOTERO_VERSION=… ./e2e/run.sh` picks Zotero (default: current release via `e2e/zotero-versions.sh`; `all` = newest of every major).
 - Local mode (`provider` `zotseek`): embeddings through `Zotero.ZotSeek.api.embed(texts, kind)` of the ZotSeek ILS fork
   (1.22.4.9+, only with its opt-in `zotseek.pluginEmbedding.enabled`); model = ZotSeek's active model id, SeekBook's
   prefixes are off (ZotSeek adds the model's). E2E stands in for the API. The E2E mock is used via `/v1` (OpenAI).
